@@ -1,0 +1,343 @@
+import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { CameraMode, Selection } from './app/types';
+import { useSimulationRuntime } from './app/useSimulationRuntime';
+import { CameraDock } from './ui/CameraDock';
+import { EventTimeline } from './ui/EventTimeline';
+import { ExternalSignals } from './ui/ExternalSignals';
+import { LoadingScreen } from './ui/LoadingScreen';
+import { ObserverInterventions } from './ui/ObserverInterventions';
+import { ResourceStrip } from './ui/ResourceStrip';
+import { SelectionPanel } from './ui/SelectionPanel';
+import { SystemPanel } from './ui/SystemPanel';
+import { TopBar } from './ui/TopBar';
+import { WelcomeOverlay } from './ui/WelcomeOverlay';
+import type { RenderDiagnostics } from './world/DiagnosticsBridge';
+import type { CameraDiagnostics } from './world/SpectatorCamera';
+import { deriveVehicles } from './world/vehicles';
+import { WorldCanvas } from './world/WorldCanvas';
+
+const SPEEDS = [0.25, 1, 4, 16, 64] as const;
+const EMPTY_RENDER_DIAGNOSTICS: RenderDiagnostics = {
+  calls: 0,
+  triangles: 0,
+  geometries: 0,
+  textures: 0,
+  fps: 0,
+};
+
+type PanelKey = 'history' | 'interventions' | 'metrics' | 'signals';
+type PanelState = Record<PanelKey, boolean>;
+
+declare global {
+  interface Window {
+    __CURRENT_DIAGNOSTICS__?: {
+      cameraMode: CameraMode;
+      cameraPosition: readonly [number, number, number];
+      cameraTransitioning: boolean;
+      day: number;
+      digest: string;
+      population: number;
+      personIds: string[];
+      ready: boolean;
+      render: RenderDiagnostics;
+      saveStatus: string;
+      selected: Selection;
+      simulationMillisecondsPerDay: number | null;
+      usingWorker: boolean;
+    };
+    __CURRENT_TEST_API__?: {
+      advanceDay: () => void;
+      selectFirstPerson: () => string | null;
+      setCameraMode: (mode: CameraMode) => void;
+    };
+  }
+}
+
+export function App() {
+  const runtime = useSimulationRuntime();
+  const inspectPerson = runtime.inspectPerson;
+  const setSimulationSpeed = runtime.setSpeed;
+  const toggleSimulationPause = runtime.togglePause;
+  const importWorld = runtime.importWorld;
+  const advanceSimulationDays = runtime.advanceDays;
+  const [selection, setSelection] = useState<Selection>(null);
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbital');
+  const [panels, setPanels] = useState<PanelState>({
+    history: false,
+    interventions: false,
+    metrics: false,
+    signals: false,
+  });
+  const [interfaceHidden, setInterfaceHidden] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [renderDiagnostics, setRenderDiagnostics] = useState(EMPTY_RENDER_DIAGNOSTICS);
+  const [cameraDiagnostics, setCameraDiagnostics] = useState<CameraDiagnostics>({
+    position: [96, 76, 96],
+    transitioning: false,
+  });
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const projection = runtime.projection;
+  const projectionDay = projection?.day;
+  const vehicles = useMemo(() => projection === null ? [] : deriveVehicles(projection), [projection]);
+  const selectedPerson = projection !== null && selection?.kind === 'person'
+    ? projection.people.find((person) => person.id === selection.id) ?? null
+    : null;
+  const selectedBuilding = projection !== null && selection?.kind === 'building'
+    ? projection.buildings.find((building) => building.id === selection.id) ?? null
+    : null;
+  const selectedVehicle = selection?.kind === 'vehicle'
+    ? vehicles.find((vehicle) => vehicle.id === selection.id) ?? null
+    : null;
+
+  useEffect(() => {
+    if (projectionDay !== undefined && selection?.kind === 'person') inspectPerson(selection.id);
+  }, [inspectPerson, projectionDay, selection]);
+
+  useEffect(() => {
+    if (projection === null || selection === null) return;
+    const stillExists = selection.kind === 'person'
+      ? projection.people.some((person) => person.id === selection.id)
+      : selection.kind === 'building'
+        ? projection.buildings.some((building) => building.id === selection.id)
+        : vehicles.some((vehicle) => vehicle.id === selection.id);
+    if (!stillExists) {
+      setSelection(null);
+      setCameraMode('orbital');
+    }
+  }, [projection, selection, vehicles]);
+
+  const handleCameraMode = useCallback((mode: CameraMode): void => {
+    if ((mode === 'follow' || mode === 'first-person') && selection?.kind !== 'person') return;
+    setCameraMode(mode);
+  }, [selection]);
+
+  const changeSpeedStep = useCallback((direction: -1 | 1): void => {
+    const currentIndex = SPEEDS.findIndex((value) => value === runtime.speed);
+    const start = currentIndex === -1 ? 1 : currentIndex;
+    const next = Math.max(0, Math.min(SPEEDS.length - 1, start + direction));
+    setSimulationSpeed(SPEEDS[next] ?? 1);
+  }, [runtime.speed, setSimulationSpeed]);
+
+  useEffect(() => {
+    const handleKeyboard = (event: KeyboardEvent): void => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+      switch (event.key.toLowerCase()) {
+        case '1':
+          setCameraMode('orbital');
+          break;
+        case '2':
+          if (selection?.kind === 'person') setCameraMode('follow');
+          break;
+        case '3':
+          if (selection?.kind === 'person') setCameraMode('first-person');
+          break;
+        case ' ':
+          event.preventDefault();
+          toggleSimulationPause();
+          break;
+        case '[':
+          changeSpeedStep(-1);
+          break;
+        case ']':
+          changeSpeedStep(1);
+          break;
+        case 'h':
+          setInterfaceHidden((hidden) => !hidden);
+          break;
+        case 'escape':
+          if (selection !== null) {
+            setSelection(null);
+            setCameraMode('orbital');
+          } else {
+            setPanels({ history: false, interventions: false, metrics: false, signals: false });
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [changeSpeedStep, selection, toggleSimulationPause]);
+
+  useEffect(() => {
+    if (projection === null) return;
+    window.__CURRENT_DIAGNOSTICS__ = {
+      cameraMode,
+      cameraPosition: cameraDiagnostics.position,
+      cameraTransitioning: cameraDiagnostics.transitioning,
+      day: projection.day,
+      digest: projection.digest,
+      population: projection.population,
+      personIds: projection.people.map((person) => person.id),
+      ready: runtime.ready,
+      render: renderDiagnostics,
+      saveStatus: runtime.saveStatus,
+      selected: selection,
+      simulationMillisecondsPerDay: runtime.hostMetrics?.averageMillisecondsPerDay ?? null,
+      usingWorker: runtime.usingWorker,
+    };
+  }, [cameraDiagnostics, cameraMode, projection, renderDiagnostics, runtime.hostMetrics, runtime.ready, runtime.saveStatus, runtime.usingWorker, selection]);
+
+  useEffect(() => {
+    if (projection === null) return;
+    window.__CURRENT_TEST_API__ = {
+      advanceDay: () => advanceSimulationDays(1),
+      selectFirstPerson: () => {
+        const person = projection.people[0];
+        if (person === undefined) return null;
+        setSelection({ kind: 'person', id: person.id });
+        return person.id;
+      },
+      setCameraMode: (mode) => handleCameraMode(mode),
+    };
+    return () => {
+      delete window.__CURRENT_TEST_API__;
+    };
+  }, [advanceSimulationDays, handleCameraMode, projection]);
+
+  const handleDiagnostics = useCallback((diagnostics: RenderDiagnostics): void => {
+    setRenderDiagnostics(diagnostics);
+  }, []);
+
+  const togglePanel = useCallback((panel: PanelKey): void => {
+    setPanels((current) => ({ ...current, [panel]: !current[panel] }));
+  }, []);
+
+  const jumpToEntity = useCallback((entityId: string): void => {
+    if (projection === null) return;
+    if (projection.people.some((person) => person.id === entityId)) {
+      setSelection({ kind: 'person', id: entityId });
+    } else if (projection.buildings.some((building) => building.id === entityId)) {
+      setSelection({ kind: 'building', id: entityId });
+    } else if (vehicles.some((vehicle) => vehicle.id === entityId)) {
+      setSelection({ kind: 'vehicle', id: entityId });
+    }
+  }, [projection, vehicles]);
+
+  const handleImportFile = useCallback(async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0];
+    if (file === undefined) return;
+    await importWorld(await file.text());
+    setSelection(null);
+    setCameraMode('orbital');
+    event.target.value = '';
+  }, [importWorld]);
+
+  if (projection === null) return <LoadingScreen error={runtime.error} />;
+
+  return (
+    <main className={interfaceHidden ? 'app-shell interface-hidden' : 'app-shell'}>
+      <WorldCanvas
+        projection={projection}
+        vehicles={vehicles}
+        selection={selection}
+        cameraMode={cameraMode}
+        onSelect={setSelection}
+        onCameraModeChange={handleCameraMode}
+        onCameraDiagnostics={setCameraDiagnostics}
+        onDiagnostics={handleDiagnostics}
+      />
+
+      <div className="vignette" aria-hidden="true" />
+      {!interfaceHidden && (
+        <>
+          <TopBar
+            day={projection.day}
+            population={projection.population}
+            settlementName={projection.settlementName}
+            cameraMode={cameraMode}
+            paused={runtime.paused}
+            speed={runtime.speed}
+            saveStatus={runtime.saveStatus}
+            usingWorker={runtime.usingWorker}
+            panelsOpen={panels}
+            onTogglePause={runtime.togglePause}
+            onSpeedChange={runtime.setSpeed}
+            onAdvanceDay={() => runtime.advanceDays(1)}
+            onSave={runtime.saveNow}
+            onExport={runtime.exportWorld}
+            onImport={() => importInputRef.current?.click()}
+            onTogglePanel={togglePanel}
+          />
+          <ResourceStrip resources={projection.resources} metrics={projection.metrics} />
+          <SelectionPanel
+            selection={selection}
+            person={selectedPerson}
+            building={selectedBuilding}
+            vehicle={selectedVehicle}
+            inspectedPerson={runtime.inspectedPersonId === selectedPerson?.id ? runtime.inspectedPerson : null}
+            events={projection.recentEvents}
+            cameraMode={cameraMode}
+            onCameraModeChange={handleCameraMode}
+            onClose={() => {
+              setSelection(null);
+              setCameraMode('orbital');
+            }}
+          />
+          {panels.history && (
+            <EventTimeline
+              events={projection.recentEvents}
+              onClose={() => togglePanel('history')}
+              onJumpTo={jumpToEntity}
+            />
+          )}
+          {panels.metrics && (
+            <SystemPanel
+              metrics={projection.metrics}
+              host={runtime.hostMetrics}
+              render={renderDiagnostics}
+              digest={projection.digest}
+              onClose={() => togglePanel('metrics')}
+            />
+          )}
+          <aside
+            className="intervention-panel glass-panel"
+            aria-label="Observer interventions"
+            hidden={!panels.interventions}
+          >
+            <button className="floating-close close-button" type="button" onClick={() => togglePanel('interventions')} aria-label="Close interventions">×</button>
+            <ObserverInterventions
+              currentDay={projection.day}
+              targetSettlementId={projection.settlementId}
+              onSubmitIntervention={runtime.submitIntervention}
+            />
+          </aside>
+          {panels.signals && (
+            <aside className="signals-panel glass-panel" aria-label="External information signals">
+              <button className="floating-close close-button" type="button" onClick={() => togglePanel('signals')} aria-label="Close outside signals">×</button>
+              <ExternalSignals
+                currentDay={projection.day}
+                effectiveDay={projection.day + 1}
+                onSubmitSignal={runtime.submitSignal}
+              />
+            </aside>
+          )}
+        </>
+      )}
+      <CameraDock
+        mode={cameraMode}
+        hasSelectedPerson={selectedPerson !== null}
+        interfaceHidden={interfaceHidden}
+        onModeChange={handleCameraMode}
+        onToggleInterface={() => setInterfaceHidden((hidden) => !hidden)}
+      />
+      {runtime.error !== null && <p className="error-toast" role="alert">{runtime.error}</p>}
+      {showWelcome && (
+        <WelcomeOverlay onEnter={() => {
+          setShowWelcome(false);
+          runtime.setSpeed(1);
+        }} />
+      )}
+      <input
+        ref={importInputRef}
+        className="visually-hidden-file"
+        type="file"
+        accept=".json,.current.json,application/json"
+        onChange={(event) => { void handleImportFile(event); }}
+        aria-label="Import world history"
+      />
+    </main>
+  );
+}

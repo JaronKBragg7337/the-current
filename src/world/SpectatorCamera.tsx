@@ -10,6 +10,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import type { CameraMode } from '../app/types';
 import type { PersonProjection } from '../simulation';
+import { dampCameraFov } from './cameraFov';
 import { resolveCameraCollision } from './cameraCollision';
 import { terrainHeight } from './terrain';
 
@@ -36,6 +37,7 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
   const direction = useMemo(() => new Vector3(), []);
   const targetDelta = useMemo(() => new Vector3(), []);
   const followLift = useMemo(() => new Vector3(0, 4.6, 0), []);
+  const orbitalOffset = useMemo(() => new Vector3(58, 45, 58), []);
   const raycaster = useMemo(() => new Raycaster(), []);
   const lastDiagnosticsAtRef = useRef(-1);
 
@@ -74,6 +76,14 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
     if (controls === null) return;
     transitionRef.current = Math.min(1, transitionRef.current + delta * 1.25);
     const transition = MathUtils.smoothstep(transitionRef.current, 0, 1);
+    if (camera instanceof PerspectiveCamera) {
+      const health = selectedPerson?.health ?? 100;
+      const nextFov = dampCameraFov(camera.fov, mode, health, delta);
+      if (Math.abs(nextFov - camera.fov) > 0.0001) {
+        camera.fov = nextFov;
+        camera.updateProjectionMatrix();
+      }
+    }
 
     if (selectedPerson !== null && (mode === 'follow' || mode === 'first-person')) {
       const ground = terrainHeight(selectedPerson.position.x, selectedPerson.position.z);
@@ -82,6 +92,9 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
 
       if (mode === 'first-person') {
         controls.enabled = false;
+        // The view stays at the autonomous NPC's eye position. Building wall
+        // shells are real, double-sided geometry, so depth testing naturally
+        // blocks sight through walls without displacing or steering the NPC.
         desired.set(selectedPerson.position.x, ground + eyeHeight, selectedPerson.position.z);
         camera.position.lerp(desired, 1 - Math.exp(-delta * (5 + transition * 8)));
         direction.set(
@@ -97,10 +110,6 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
         target.copy(camera.position).addScaledVector(direction, 8);
         target.y += selectedPerson.health < 35 ? Math.sin(clock.elapsedTime * 8) * 0.035 : 0;
         camera.lookAt(target);
-        if (camera instanceof PerspectiveCamera) {
-          camera.fov = MathUtils.damp(camera.fov, selectedPerson.health < 25 ? 68 : 62, 5, delta);
-          camera.updateProjectionMatrix();
-        }
         if (clock.elapsedTime - lastDiagnosticsAtRef.current >= 0.2) {
           lastDiagnosticsAtRef.current = clock.elapsedTime;
           onDiagnostics({
@@ -128,7 +137,7 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
       else target.set(focusPosition[0], focusPosition[1], focusPosition[2]);
       controls.target.lerp(target, 1 - Math.exp(-delta * 4.2));
       if (transitionRef.current < 1) {
-        desired.copy(target).add(new Vector3(58, 45, 58));
+        desired.copy(target).add(orbitalOffset);
         camera.position.lerp(desired, 1 - Math.exp(-delta * 3.3));
       }
     }
