@@ -139,6 +139,11 @@ test('bundled external signals load without third-party requests and enter histo
 
   const persistedInputs = await readPersistedExternalInputs(page);
   expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
+  await advanceOneDay(page);
+  await expect.poll(
+    async () => (await readPersistedEventTypes(page)).includes('signal-received'),
+    { timeout: 30_000 },
+  ).toBe(true);
   await expect(page.getByRole('button', { name: 'Close outside signals' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('aside.signals-panel')).toHaveAttribute('hidden', '');
