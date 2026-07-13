@@ -22,10 +22,10 @@ async function activateVisibleButton(
   button: Locator,
 ): Promise<void> {
   await expect(button).toBeVisible();
-  // Sticky close buttons can keep Playwright's pointer-action stability loop
-  // alive under software WebGL. Visibility is asserted first; dispatching the
-  // DOM click then verifies the same accessible button and React handler.
-  await button.dispatchEvent('click');
+  // Sticky controls can keep Playwright's pointer-action stability loop alive
+  // under software WebGL. HTMLButtonElement.click() still exercises the real
+  // bubbling click and React handler without depending on pointer stability.
+  await button.evaluate((element) => (element as HTMLButtonElement).click());
 }
 
 async function expectNativeHidden(panel: Locator): Promise<void> {
