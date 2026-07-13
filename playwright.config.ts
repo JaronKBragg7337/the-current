@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const localOrigin = 'http://127.0.0.1:4179';
 const localBasePath = '/the-current/';
 const externalBaseUrl = process.env.PLAYWRIGHT_TEST_BASE_URL;
+const isCi = process.env.CI === 'true';
 const baseURL = externalBaseUrl === undefined
   ? `${localOrigin}${localBasePath}`
   : externalBaseUrl.endsWith('/') ? externalBaseUrl : `${externalBaseUrl}/`;
@@ -14,14 +15,14 @@ export default defineConfig({
   // pages concurrently under SwiftShader can starve the browser event loop and
   // turn persistence assertions into timing failures rather than useful tests.
   fullyParallel: false,
-  forbidOnly: process.env.CI === 'true',
-  retries: process.env.CI === 'true' ? 2 : 0,
+  forbidOnly: isCi,
+  retries: isCi ? 2 : 0,
   workers: 1,
-  timeout: 90_000,
+  timeout: isCi ? 180_000 : 90_000,
   expect: {
-    timeout: 30_000,
+    timeout: isCi ? 60_000 : 30_000,
   },
-  reporter: process.env.CI === 'true'
+  reporter: isCi
     ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
     : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
@@ -55,7 +56,7 @@ export default defineConfig({
           command: `npm run dev -- --host 127.0.0.1 --port 4179 --strictPort --base=${localBasePath}`,
           url: baseURL,
           reuseExistingServer: false,
-          timeout: 120_000,
+          timeout: isCi ? 180_000 : 120_000,
           stdout: 'ignore' as const,
           stderr: 'pipe' as const,
         },

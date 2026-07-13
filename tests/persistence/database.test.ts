@@ -109,7 +109,7 @@ describe('CurrentPersistence', () => {
     const snapshots = await store.listSnapshots('world:retention');
     expect(snapshots.map((snapshot) => snapshot.day)).toEqual([0, 25, 30]);
     expect(snapshots.at(-1)?.digest).toBe(simulation.digest());
-  }, 15_000);
+  }, 60_000);
 
   it('round-trips world history, external inputs, preferences, and deterministic continuation through JSON', async () => {
     const source = createStore('export-source');

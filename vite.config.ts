@@ -24,6 +24,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Hosted two-core runners otherwise make the long deterministic replay
+    // and IndexedDB retention workloads contend until their safety timeouts.
+    fileParallelism: process.env.CI !== 'true',
     include: [
       'tests/**/*.test.ts',
       'tests/**/*.test.tsx',
