@@ -19,6 +19,7 @@ import type { CameraDiagnostics } from './SpectatorCamera';
 import { SpectatorCamera } from './SpectatorCamera';
 import { Terrain } from './WorldTerrain';
 import { TrafficLayer } from './TrafficLayer';
+import { spreadCoLocatedPeople } from './crowdLayout';
 import { terrainHeight } from './terrain';
 
 interface WorldCanvasProps {
@@ -50,8 +51,12 @@ function WorldCanvasComponent({
   onCameraDiagnostics,
   onDiagnostics,
 }: WorldCanvasProps) {
+  const visualPeople = useMemo(
+    () => spreadCoLocatedPeople(projection.people, projection.buildings),
+    [projection.buildings, projection.people],
+  );
   const selectedPerson = selection?.kind === 'person'
-    ? projection.people.find((person) => person.id === selection.id) ?? null
+    ? visualPeople.find((person) => person.id === selection.id) ?? null
     : null;
   const selectedBuilding = selection?.kind === 'building'
     ? projection.buildings.find((building) => building.id === selection.id) ?? null
@@ -127,17 +132,19 @@ function WorldCanvasComponent({
         <BuildingFigure
           key={building.id}
           building={building}
+          cameraMode={cameraMode}
+          observedPerson={selectedPerson}
           selected={selection?.kind === 'building' && selection.id === building.id}
           onSelect={(buildingId) => onSelect({ kind: 'building', id: buildingId })}
         />
       ))}
       <FarPopulation
-        people={projection.people}
+        people={visualPeople}
         selectedPersonId={selectedPerson?.id ?? null}
         cameraMode={cameraMode}
         onSelect={(personId) => onSelect({ kind: 'person', id: personId })}
       />
-      {projection.people.map((person) => (
+      {visualPeople.map((person) => (
         <PersonFigure
           key={person.id}
           person={person}

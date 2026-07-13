@@ -22,6 +22,8 @@ No render random number changes a person or building on reload. No mesh position
 - **Far/orbital:** two instanced batches preserve body/head silhouette and identity color while avoiding per-limb draw calls.
 - **First person:** the selected render figure is hidden while the camera uses projected eye height, preventing head obstruction. The person remains autonomous.
 
+Point-like authoritative work and home coordinates can contain several people. The render projection gives exactly co-located citizens a stable ID-sorted formation inside the same footprint; authoritative positions and destinations are untouched. Non-selected bodies inside the camera's personal space are culled, and follow mode opens a temporary roof/wall cutaway only for the structure containing the observed person.
+
 The next tiering milestone is a shared-geometry medium citizen and removal of hidden per-person frame callbacks.
 
 ## Settlement assembly

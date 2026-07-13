@@ -4,13 +4,17 @@ import { useMemo, useRef } from 'react';
 import { BoxGeometry, Color, DoubleSide, Vector3, type BufferGeometry, type Group } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { BUILDING_FOOTPRINTS, type BuildingProjection, type BuildingType, type ConstructionStage } from '../simulation';
+import type { CameraMode } from '../app/types';
+import { BUILDING_FOOTPRINTS, type BuildingProjection, type BuildingType, type ConstructionStage, type PersonProjection } from '../simulation';
 import { createBuildingWallShell } from './buildingShell';
 import { ConfluenceAsset } from './ConfluenceKit';
+import { personInsideBuilding } from './crowdLayout';
 import { terrainHeight } from './terrain';
 
 interface BuildingFigureProps {
   building: BuildingProjection;
+  cameraMode: CameraMode;
+  observedPerson: PersonProjection | null;
   selected: boolean;
   onSelect: (buildingId: string) => void;
 }
@@ -236,7 +240,7 @@ function renderFarBuilding(type: BuildingType, stage: number, style: BuildingSty
   );
 }
 
-export function BuildingFigure({ building, selected, onSelect }: BuildingFigureProps) {
+export function BuildingFigure({ building, cameraMode, observedPerson, selected, onSelect }: BuildingFigureProps) {
   const detailRef = useRef<Group>(null);
   const farRef = useRef<Group>(null);
   const style = STYLES[building.type];
@@ -252,6 +256,7 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
     [style],
   );
   const worldPosition = useMemo(() => new Vector3(building.position.x, ground, building.position.z), [building.position.x, building.position.z, ground]);
+  const cutaway = cameraMode === 'follow' && personInsideBuilding(observedPerson, building);
 
   useFrame(({ camera }) => {
     const detailed = selected || camera.position.distanceToSquared(worldPosition) < 82 ** 2;
@@ -306,6 +311,7 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
               geometry={wallShell}
               castShadow
               receiveShadow
+              visible={!cutaway}
               userData={{ cameraObstacle: true, cameraObstacleVolume: false }}
             >
               <meshStandardMaterial color={style.wall} roughness={0.88} side={DoubleSide} />
@@ -338,12 +344,12 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
             </group>
           )}
           {stage >= 4 && (
-            <mesh geometry={cornerTrim}>
+            <mesh geometry={cornerTrim} visible={!cutaway}>
               <meshStandardMaterial color="#8f7658" roughness={0.94} />
             </mesh>
           )}
           {stage >= 5 && (
-            <group position={[0, style.wallHeight + 0.57, 0]} userData={{ cameraObstacle: true }}>
+            <group position={[0, style.wallHeight + 0.57, 0]} visible={!cutaway} userData={{ cameraObstacle: true }}>
               <mesh position={[-style.width * 0.245, 0.65, 0]} rotation={[0, 0, 0.55]} castShadow>
                 <boxGeometry args={[style.width * 0.62, 0.34, style.depth + 0.7]} />
                 <meshStandardMaterial color={style.roof} roughness={0.94} />
@@ -354,7 +360,7 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
               </mesh>
             </group>
           )}
-          {stage >= 5 && ['house', 'clinic', 'school', 'council-hall'].includes(building.type) && (
+          {stage >= 5 && !cutaway && ['house', 'clinic', 'school', 'council-hall'].includes(building.type) && (
             <group position={[style.width * 0.28, style.wallHeight + 1.15, -style.depth * 0.2]}>
               <mesh castShadow><boxGeometry args={[0.68, 2.05, 0.76]} /><meshStandardMaterial color="#866b50" roughness={0.96} /></mesh>
             </group>
