@@ -574,6 +574,7 @@ export type SimulationEventType =
   | 'death'
   | 'employment-changed'
   | 'encounter'
+  | 'entropy-mixed'
   | 'inheritance'
   | 'institution-founded'
   | 'intervention-resolved'
@@ -637,6 +638,19 @@ export interface IdCounters {
   person: number;
 }
 
+/**
+ * Accumulated hidden-entropy chains. Both values are hash chains over every
+ * entropy input the world has ever received. `surface` reseeds the ordinary
+ * daily randomness; `deep` is a second, independently chained layer reserved
+ * for rare high-impact outcomes (early deaths, breakthroughs, intervention
+ * consequences) so even a party who observed one day's entropy input cannot
+ * reconstruct those outcomes without the entire history.
+ */
+export interface EntropyState {
+  surface: string;
+  deep: string;
+}
+
 export interface WorldState {
   schemaVersion: typeof SIMULATION_SCHEMA_VERSION;
   engineVersion: string;
@@ -645,6 +659,7 @@ export interface WorldState {
   tick: number;
   eventSequence: number;
   rngState: number;
+  entropy: EntropyState;
   config: SimulationConfig;
   ids: IdCounters;
   people: Record<PersonId, Person>;
@@ -751,6 +766,14 @@ export interface WorldSnapshot {
 export interface DayInputs {
   signals: NormalizedSignal[];
   interventions: ObserverIntervention[];
+  /**
+   * Optional hidden entropy for this day, drawn by the authoritative host
+   * from a cryptographic source. When present it is mixed into the world's
+   * entropy chains before the day runs, making the future uncomputable from
+   * the seed alone while keeping replay of the recorded past exact. When
+   * absent the day advances fully deterministically (test/replay mode).
+   */
+  entropy?: string;
 }
 
 export interface DayResult {

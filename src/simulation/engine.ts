@@ -1,7 +1,7 @@
 import { canonicalDigest, canonicalStringify, cloneSerializable } from './canonical';
 import { resolveSimulationConfig } from './config';
 import { findBuildingSite, resolveNearValidSite, resolveTravelerPosition, type PlacementObstacle } from './placement';
-import { DeterministicRng, deterministicStream } from './rng';
+import { DeterministicRng, deterministicStream, hashSeed } from './rng';
 import {
   SIMULATION_ENGINE_VERSION,
   SIMULATION_SCHEMA_VERSION,
@@ -437,6 +437,7 @@ export class CurrentSimulation {
       tick: 0,
       eventSequence: 0,
       rngState: rng.snapshot(),
+      entropy: { surface: '', deep: '' },
       config,
       ids: { breakthrough: 0, building: 0, household: 0, institution: 0, person: 0 },
       people: {},
@@ -478,6 +479,9 @@ export class CurrentSimulation {
     const actualDigest = canonicalDigest(state);
     if (snapshot.digest !== actualDigest) throw new Error('Snapshot digest does not match its world state');
     state.config = resolveSimulationConfig(state.config as DeepPartial<SimulationConfig>);
+    if ((state as Partial<WorldState>).entropy === undefined) {
+      state.entropy = { surface: '', deep: '' };
+    }
     for (const institution of sortedRecordValues(state.institutions)) {
       const legacy = institution as Institution & { followerCandidateIds?: Record<PersonId, PersonId> };
       if (legacy.followerCandidateIds === undefined) {
@@ -505,6 +509,8 @@ export class CurrentSimulation {
     this.stateValue.day += 1;
     this.stateValue.tick = this.stateValue.day * this.stateValue.config.ticksPerDay;
     this.stateValue.settlement.dailyEconomy = emptyDailyEconomy();
+
+    if (inputs.entropy !== undefined && inputs.entropy !== '') this.mixEntropy(inputs.entropy);
 
     for (const signal of [...inputs.signals].sort((a, b) => a.id.localeCompare(b.id))) this.queueSignal(signal);
     for (const intervention of [...inputs.interventions].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -546,6 +552,42 @@ export class CurrentSimulation {
       summary,
     });
     return { day: this.currentDay, summary: cloneSerializable(summary), events, digest: dayDigest };
+  }
+
+  /**
+   * Fold one day's hidden entropy into the world's two entropy chains.
+   *
+   * The surface chain reseeds ordinary daily randomness. The deep chain is a
+   * second randomizer layered on top: it hashes the new surface value again
+   * with its own history, and only rare high-impact draws consume it. The
+   * mix is recorded as an ordinary timestamped event, so the past replays
+   * exactly from saved history while the future stays uncomputable — the
+   * entropy for tomorrow does not exist yet anywhere.
+   */
+  private mixEntropy(entropy: string): void {
+    const surface = hashSeed(`${this.stateValue.entropy.surface}|${entropy}|${this.stateValue.day}`).toString(16);
+    const deep = hashSeed(`${this.stateValue.entropy.deep}|${surface}|${entropy}|deep`).toString(16);
+    this.stateValue.entropy = { surface, deep };
+    // Perturb the sequential world RNG (identity generation, trait rolls)
+    // as well, so entrants and their hidden lifespans also become
+    // uncomputable ahead of time.
+    this.rng = DeterministicRng.restore((this.rng.snapshot() ^ hashSeed(surface)) >>> 0);
+    this.stateValue.rngState = this.rng.snapshot();
+    this.emit('entropy-mixed', [], 'Outside chance entered the world; the future shifted unknowably.', {
+      entropy,
+    });
+  }
+
+  /** Seed for ordinary daily randomness, shifted by the surface entropy chain. */
+  private streamSeed(): string {
+    const surface = this.stateValue.entropy.surface;
+    return surface === '' ? this.seed : `${this.seed}~e:${surface}`;
+  }
+
+  /** Seed for rare high-impact randomness, shifted by the deep entropy chain. */
+  private deepStreamSeed(): string {
+    const deep = this.stateValue.entropy.deep;
+    return deep === '' ? this.seed : `${this.seed}~deep:${deep}`;
   }
 
   advanceDays(count: number, inputProvider?: (day: number) => DayInputs | undefined): DayResult[] {
@@ -915,7 +957,7 @@ export class CurrentSimulation {
     const mother = this.stateValue.people[motherId];
     const father = this.stateValue.people[fatherId];
     if (mother === undefined || father === undefined) return;
-    const local = deterministicStream(this.seed, 'inheritance', child.id);
+    const local = deterministicStream(this.streamSeed(), 'inheritance', child.id);
     const traitKeys = Object.keys(child.traits).sort() as (keyof TraitSet)[];
     for (const key of traitKeys) child.traits[key] = clamp((mother.traits[key] + father.traits[key]) / 2 + local.int(-14, 14));
     for (const domain of SKILL_DOMAINS) {
@@ -1147,7 +1189,7 @@ export class CurrentSimulation {
         { value: 'laborer', weight: 42 + projects * 22 },
         { value: 'artist', weight: person.aptitudes.art + Math.max(0, -pressure.sentiment) * 20 },
       ];
-      const local = deterministicStream(this.seed, 'employment', this.currentDay, person.id);
+      const local = deterministicStream(this.streamSeed(), 'employment', this.currentDay, person.id);
       const occupation = local.weightedPick(choices);
       if (occupation !== person.occupation) {
         const previous = person.occupation;
@@ -1265,7 +1307,7 @@ export class CurrentSimulation {
       const skillDomain = OCCUPATION_SKILL[person.occupation];
       const skill = person.skills[skillDomain];
       const capacity = (0.62 + person.health / 250 + person.needs.energy / 400) * (0.8 + skill / 220);
-      const local = deterministicStream(this.seed, 'task-success', this.currentDay, person.id);
+      const local = deterministicStream(this.streamSeed(), 'task-success', this.currentDay, person.id);
       const successChance = clamp(0.48 + capacity * 0.32 + person.traits.patience / 500, 0.1, 0.97);
       person.lastTaskSuccess = local.bool(successChance);
       const output = person.lastTaskSuccess ? capacity : capacity * 0.42;
@@ -1387,7 +1429,7 @@ export class CurrentSimulation {
         deaths.push({ person, cause: person.needs.water < 10 ? 'dehydration' : person.needs.food < 10 ? 'starvation' : 'illness and exposure' });
       } else if (person.health < 18) {
         const risk = clamp((18 - person.health) / 125, 0, 0.12);
-        if (deterministicStream(this.seed, 'early-death', this.currentDay, person.id).bool(risk)) {
+        if (deterministicStream(this.deepStreamSeed(), 'early-death', this.currentDay, person.id).bool(risk)) {
           deaths.push({ person, cause: person.needs.water < person.needs.food ? 'dehydration' : 'medical failure' });
         }
       }
@@ -1473,7 +1515,7 @@ export class CurrentSimulation {
     const firstMeeting = relationship === undefined;
     const sharedWork = this.shareActualWorkContext(personA, personB);
     if (relationship === undefined) {
-      const local = deterministicStream(this.seed, 'first-meeting', id);
+      const local = deterministicStream(this.streamSeed(), 'first-meeting', id);
       const compatibility = this.personCompatibility(personA, personB);
       relationship = {
         id,
@@ -1496,7 +1538,7 @@ export class CurrentSimulation {
       this.addPersonMemory(personA, { day: this.currentDay, importance: 35, subjectId: personB.id, summary: `First met ${personB.name}.`, type: 'arrival' });
       this.addPersonMemory(personB, { day: this.currentDay, importance: 35, subjectId: personA.id, summary: `First met ${personA.name}.`, type: 'arrival' });
     }
-    const local = deterministicStream(this.seed, 'encounter', this.currentDay, id);
+    const local = deterministicStream(this.streamSeed(), 'encounter', this.currentDay, id);
     if (sharedWork) relationship.sharedWorkDays += 1;
     const empathy = (personA.traits.empathy + personB.traits.empathy) / 200;
     const sociability = (personA.traits.sociability + personB.traits.sociability) / 200;
@@ -1616,8 +1658,8 @@ export class CurrentSimulation {
         0,
         0.32,
       );
-      if (!deterministicStream(this.seed, 'conception', this.currentDay, mother.id, father.id).bool(chance)) continue;
-      const local = deterministicStream(this.seed, 'gestation', this.currentDay, mother.id, father.id);
+      if (!deterministicStream(this.streamSeed(), 'conception', this.currentDay, mother.id, father.id).bool(chance)) continue;
+      const local = deterministicStream(this.streamSeed(), 'gestation', this.currentDay, mother.id, father.id);
       mother.pregnancy = {
         conceivedDay: this.currentDay,
         dueDay: this.currentDay + local.int(config.gestationDays.min, config.gestationDays.max),
@@ -1644,7 +1686,7 @@ export class CurrentSimulation {
     else if (alive >= 70 && this.completeBuildings().filter((building) => building.type === 'clinic').length < 2 && !queuedTypes.has('clinic')) type = 'clinic';
     else if (alive >= 80 && this.completeBuildings().filter((building) => building.type === 'power-station').length < 1 && !queuedTypes.has('power-station')) type = 'power-station';
     if (type === null) return;
-    const local = deterministicStream(this.seed, 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
+    const local = deterministicStream(this.streamSeed(), 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
     const position = findBuildingSite(local, type, Object.values(this.stateValue.buildings));
     if (position === null) return;
     const commissioner = this.primaryInstitution()?.id ?? null;
@@ -1903,7 +1945,7 @@ export class CurrentSimulation {
         this.emit('breakthrough-failed', [breakthrough.id], `${breakthrough.title} was abandoned after its contributors were lost.`, { failures: breakthrough.failures });
         continue;
       }
-      const local = deterministicStream(this.seed, 'breakthrough-progress', this.currentDay, breakthrough.id);
+      const local = deterministicStream(this.deepStreamSeed(), 'breakthrough-progress', this.currentDay, breakthrough.id);
       const averageKnowledge = inventors.reduce((sum, person) => sum + person.knowledge, 0) / inventors.length;
       const crossDomain = new Set(inventors.flatMap((person) => person.interests)).size;
       const institutionSupport = breakthrough.institutionId === null ? 0 : (this.stateValue.institutions[breakthrough.institutionId]?.treasury ?? 0) > 30 ? 2 : 0;
@@ -2137,7 +2179,7 @@ export class CurrentSimulation {
       const intervention = record.intervention;
       const council = this.primaryInstitution();
       const corruption = (council?.corruption ?? 0) / 100;
-      const local = deterministicStream(this.seed, 'intervention', intervention.id);
+      const local = deterministicStream(this.deepStreamSeed(), 'intervention', intervention.id);
       let outcome: string;
       if (intervention.kind === 'help') {
         const diversion = clamp(corruption * (0.3 + local.float() * 0.5), 0, 0.7);
