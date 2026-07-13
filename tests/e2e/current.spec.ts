@@ -86,13 +86,17 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   const historyPanel = page.getByRole('complementary', { name: 'Recent world history' });
   await expect(historyPanel).toBeVisible();
   await activateVisibleButton(page.getByRole('button', { name: 'Close history' }));
-  await expect(historyPanel).toBeHidden();
+  // History is conditionally unmounted. Counting the DOM node avoids a
+  // software-WebGL accessibility-tree visibility wait that can stall even
+  // after the panel has already closed.
+  await expect(historyPanel).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Influence', exact: true }).click();
   const interventionPanel = page.getByRole('complementary', { name: 'Observer interventions' });
   await expect(interventionPanel).toBeVisible();
   await activateVisibleButton(page.getByRole('button', { name: 'Close interventions' }));
-  await expect(interventionPanel).toBeHidden();
+  // This panel remains mounted and uses the native boolean hidden property.
+  await expect(page.locator('aside.intervention-panel')).toHaveAttribute('hidden', '');
 
   await page.getByRole('button', { name: 'System', exact: true }).click();
   const diagnosticsPanel = page.getByRole('complementary', {
@@ -102,7 +106,7 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   await expect(diagnosticsPanel.getByText('Draw calls')).toBeVisible();
   await expect(diagnosticsPanel.getByText('State digest')).toBeVisible();
   await activateVisibleButton(page.getByRole('button', { name: 'Close diagnostics' }));
-  await expect(diagnosticsPanel).toBeHidden();
+  await expect(diagnosticsPanel).toHaveCount(0);
 });
 
 test('bundled external signals load without third-party requests and enter history as pressure', async ({ page }, testInfo) => {
@@ -137,7 +141,10 @@ test('bundled external signals load without third-party requests and enter histo
   const persistedInputs = await readPersistedExternalInputs(page);
   expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
   await activateVisibleButton(page.getByRole('button', { name: 'Close outside signals' }));
-  await expect(page.getByRole('heading', { name: 'External signals' })).toBeHidden();
+  // The signals panel intentionally stays mounted and is hidden with the
+  // native hidden attribute. Assert that state directly rather than asking
+  // the role locator to poll an accessibility node that has disappeared.
+  await expect(page.locator('aside.signals-panel')).toHaveAttribute('hidden', '');
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText('signal received', { exact: true })).toBeVisible();
   expect(thirdPartyRequests).toEqual([]);
