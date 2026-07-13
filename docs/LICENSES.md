@@ -90,7 +90,68 @@ Software packages are not external art assets and do not belong in `assets/manif
 | [Khronos glTF Validator](https://github.com/KhronosGroup/glTF-Validator) | Apache-2.0 | Structural validation of generated glTF/GLB files when installed in CI/tooling |
 | [Mesh2Motion](https://github.com/Mesh2Motion) | MIT application code; included art/animations described as CC0 | Optional interactive rig/retarget QA, not pipeline authority; Blender headless output remains the reproducible path |
 
-The complete JavaScript dependency inventory is governed by exact package metadata and the lockfile. It should be audited with a package-license scanner before release; this asset document does not substitute for that audit.
+### Direct JavaScript dependencies
+
+Versions are exact because `package.json` pins them and `package-lock.json` records the resolved package. This table reflects the license field of each resolved direct package.
+
+| Runtime package | Version | License |
+| --- | ---: | --- |
+| `@react-three/drei` | 10.7.7 | MIT |
+| `@react-three/fiber` | 9.6.1 | MIT |
+| `idb` | 8.0.3 | ISC |
+| `react` | 19.2.7 | MIT |
+| `react-dom` | 19.2.7 | MIT |
+| `three` | 0.185.1 | MIT |
+| `three-mesh-bvh` | 0.9.11 | MIT |
+| `zod` | 4.4.3 | MIT |
+
+| Development package | Version | License |
+| --- | ---: | --- |
+| `@eslint/js` | 10.0.1 | MIT |
+| `@gltf-transform/cli` | 4.4.1 | MIT |
+| `@gltf-transform/core` | 4.4.1 | MIT |
+| `@gltf-transform/extensions` | 4.4.1 | MIT |
+| `@gltf-transform/functions` | 4.4.1 | MIT |
+| `@playwright/test` | 1.61.1 | Apache-2.0 |
+| `@types/node` | 24.13.3 | MIT |
+| `@types/react` | 19.2.17 | MIT |
+| `@types/react-dom` | 19.2.3 | MIT |
+| `@types/three` | 0.185.1 | MIT |
+| `@vitejs/plugin-react` | 6.0.3 | MIT |
+| `@vitest/coverage-v8` | 4.1.10 | MIT |
+| `eslint` | 10.7.0 | MIT |
+| `eslint-plugin-react-hooks` | 7.1.1 | MIT |
+| `eslint-plugin-react-refresh` | 0.5.3 | MIT |
+| `fake-indexeddb` | 6.2.5 | Apache-2.0 |
+| `fast-check` | 4.9.0 | MIT |
+| `globals` | 17.7.0 | MIT |
+| `jsdom` | 29.1.1 | MIT |
+| `meshoptimizer` | 1.2.0 | MIT |
+| `tsx` | 4.23.1 | MIT |
+| `typescript` | 5.9.3 | Apache-2.0 |
+| `typescript-eslint` | 8.63.0 | MIT |
+| `vite` | 8.1.4 | MIT |
+| `vitest` | 4.1.10 | MIT |
+
+### Complete lockfile inventory
+
+[`dependency-licenses.json`](dependency-licenses.json) is the committed, machine-readable inventory of every resolved package path in npm's lockfile, including transitive, optional, platform-specific, and peer packages. It records exact versions, license expressions, resolution URLs, integrity hashes, dependency scope, and the SHA-256 of the source lockfile. It is deterministic: no generation timestamp is embedded.
+
+Generate it after an intentional lockfile change:
+
+```sh
+npm run licenses:generate
+```
+
+Verify that the committed inventory exactly matches the lockfile:
+
+```sh
+npm run licenses:validate
+```
+
+At this checkpoint the inventory contains 564 resolved package paths: 69 runtime-reachable and 495 development-only. The only package without a `license` field in npm's lock metadata is `webgl-constants@1.1.1`; its distributed npm tarball contains an MIT license file. That reviewed exception is explicit in both the generator and inventory. Any new package lacking declared license metadata makes generation fail until it is reviewed.
+
+Some development-only toolchains include LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, and CC0-1.0 components, including platform-specific optional binaries. They are recorded rather than flattened to the license of their parent tool. None of those entries is part of the application's runtime dependency graph according to npm's lock metadata. The inventory is an audit trail, not a replacement for the actual license texts or legal review.
 
 ## Sources not approved for initial incorporation
 

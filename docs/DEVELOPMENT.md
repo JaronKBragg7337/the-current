@@ -61,6 +61,7 @@ npm run sim:150
 npm run sim:long
 npm run data:ingest
 npm run assets:validate
+npm run licenses:validate
 npm run test:e2e
 ```
 

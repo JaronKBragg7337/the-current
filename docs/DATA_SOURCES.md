@@ -198,16 +198,16 @@ visible, and the authoritative civilization continues from its prior pressures.
 
 ```bash
 # Deterministic, network-free fixture (the default)
-pnpm data:ingest
+npm run data:ingest
 
 # Credential-free live sources; individual failures are recorded
-pnpm data:ingest -- --live --out public/data/live-signals.json
+npm run data:ingest -- --live --out public/data/live-signals.json
 
 # Compare against a prior snapshot when calculating novelty/revision
-pnpm data:ingest -- --live --previous public/data/previous-signals.json
+npm run data:ingest -- --live --previous public/data/previous-signals.json
 
 # Opt in one Open-Meteo point (latitude,longitude,stable-id)
-pnpm data:ingest -- --open-meteo 39.7684,-86.1581,indianapolis
+npm run data:ingest -- --open-meteo 39.7684,-86.1581,indianapolis
 ```
 
 Live output is a review artifact, not automatically trusted or committed. Keep
