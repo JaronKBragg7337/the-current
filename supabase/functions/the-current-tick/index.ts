@@ -18,7 +18,7 @@
 // push them, then redeploy this function with the new commit hash.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@c4d6bc8743a96f281ac32a40a67c7c1cd64a736c/src/simulation/index.ts';
+import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@01081736957d310b60fe5f471e7be158c30880aa/src/simulation/index.ts';
 
 const WORLD_ID = 'main';
 const SHARED_SEED = 'current-shared-001';
