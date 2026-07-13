@@ -199,10 +199,13 @@ const OCCUPATION_SKILL: Record<Occupation, SkillDomain> = {
 };
 
 const OCCUPATION_BUILDING: Partial<Record<Occupation, BuildingType>> = {
+  artist: 'market',
   builder: 'workshop',
   caregiver: 'clinic',
+  explorer: 'warehouse',
   farmer: 'farm',
   healer: 'clinic',
+  hunter: 'warehouse',
   inventor: 'workshop',
   laborer: 'warehouse',
   mechanic: 'workshop',
@@ -210,6 +213,7 @@ const OCCUPATION_BUILDING: Partial<Record<Occupation, BuildingType>> = {
   researcher: 'school',
   teacher: 'school',
   trader: 'market',
+  unemployed: 'market',
 };
 
 const BASE_PRICES: ResourceLedger = {
@@ -224,6 +228,11 @@ const BASE_PRICES: ResourceLedger = {
 };
 
 const EMPTY_INPUTS: DayInputs = { signals: [], interventions: [] };
+
+const TASK_SITE_RADIUS_METERS = 3;
+const ENCOUNTER_RADIUS_METERS = 5.5;
+const SHARED_CONTEXT_RADIUS_METERS = 4;
+const DAILY_TRAVEL_METERS = 140;
 
 function clamp(value: number, minimum = 0, maximum = 100): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -468,6 +477,17 @@ export class CurrentSimulation {
     const actualDigest = canonicalDigest(state);
     if (snapshot.digest !== actualDigest) throw new Error('Snapshot digest does not match its world state');
     state.config = resolveSimulationConfig(state.config as DeepPartial<SimulationConfig>);
+    for (const institution of sortedRecordValues(state.institutions)) {
+      const legacy = institution as Institution & { followerCandidateIds?: Record<PersonId, PersonId> };
+      if (legacy.followerCandidateIds === undefined) {
+        legacy.followerCandidateIds = {};
+        if (institution.leaderId !== null) {
+          for (const followerId of Object.keys(institution.followerLoyalty).sort()) {
+            if (followerId !== institution.leaderId) legacy.followerCandidateIds[followerId] = institution.leaderId;
+          }
+        }
+      }
+    }
     return new CurrentSimulation(state, DeterministicRng.restore(state.rngState));
   }
 
@@ -497,17 +517,18 @@ export class CurrentSimulation {
     this.addGuaranteedEntrants();
     this.assignHousing();
     this.assignEmployment();
+    this.planConstruction();
     this.chooseTasksAndDestinations();
+    this.updateMovement();
     this.runProductionAndEmployment();
     this.consumeResourcesAndUpdateHealth();
     this.runEncounters();
     this.formPartnerships();
     this.considerReproduction();
-    this.planConstruction();
     this.progressConstruction();
     this.updateInstitutions();
     this.updateBreakthroughs();
-    this.updateMovementAndPersonalGrowth();
+    this.updatePersonalGrowth();
     this.updatePricesAndEnvironment();
     this.assignHousing();
     this.pruneHistory();
@@ -614,7 +635,7 @@ export class CurrentSimulation {
     const underConstruction = sortedRecordValues(this.stateValue.buildings).filter((building) => building.stage !== 'complete').length;
     const leaders = sortedRecordValues(this.stateValue.institutions).filter((institution) => institution.leaderId !== null).length;
     const followerEdges = sortedRecordValues(this.stateValue.institutions)
-      .reduce((sum, institution) => sum + Object.keys(institution.followerLoyalty).length, 0);
+      .reduce((sum, institution) => sum + Object.keys(institution.followerCandidateIds).length, 0);
     const latest = this.stateValue.dailySummaries[this.stateValue.dailySummaries.length - 1];
     const saveApproximateBytes = this.suppressMetricSize ? 0 : canonicalStringify(this.stateValue).length;
     return {
@@ -751,6 +772,7 @@ export class CurrentSimulation {
     day: number,
     motherId: PersonId | null,
     fatherId: PersonId | null,
+    positionOverride?: Position3,
   ): Person {
     this.stateValue.ids.person += 1;
     const id = `person:${this.stateValue.ids.person.toString().padStart(6, '0')}`;
@@ -772,9 +794,11 @@ export class CurrentSimulation {
     const emergenceOccupation = PROFILE_OCCUPATION[profile] ?? 'unemployed';
     const firstName = this.rng.pick(FIRST_NAMES);
     const lastName = this.rng.pick(LAST_NAMES);
-    const position = origin === 'entrant'
-      ? cloneSerializable(this.stateValue.settlement.entryPoint)
-      : { x: this.rng.int(-24, 24), y: 0, z: this.rng.int(-22, 22) };
+    const position = positionOverride !== undefined
+      ? cloneSerializable(positionOverride)
+      : origin === 'entrant'
+        ? cloneSerializable(this.stateValue.settlement.entryPoint)
+        : { x: this.rng.int(-24, 24), y: 0, z: this.rng.int(-22, 22) };
     const person: Person = {
       id,
       name: `${firstName} ${lastName} ${this.stateValue.ids.person.toString(36).toUpperCase()}`,
@@ -828,7 +852,7 @@ export class CurrentSimulation {
       currentTask: origin === 'entrant' ? 'travel' : origin === 'born' ? 'care' : 'idle',
       decisionReason: origin === 'entrant' ? 'Searching for food, shelter, and useful work.' : 'Assessing immediate needs.',
       position,
-      destination: { x: 0, y: 0, z: 0 },
+      destination: origin === 'born' ? cloneSerializable(position) : { x: 0, y: 0, z: 0 },
       yaw: 0,
       lastTaskSuccess: false,
       pregnancy: null,
@@ -958,6 +982,7 @@ export class CurrentSimulation {
       founderIds: [...founders].sort(),
       memberIds: [...founders].sort(),
       leaderId: null,
+      followerCandidateIds: {},
       followerLoyalty: {},
       legitimacy: 52,
       corruption: 8,
@@ -1026,7 +1051,9 @@ export class CurrentSimulation {
         mother.pregnancy = null;
         continue;
       }
-      const child = this.createPerson('born', this.currentDay, mother.id, father.id);
+      const home = mother.homeBuildingId === null ? undefined : this.stateValue.buildings[mother.homeBuildingId];
+      const birthPosition = cloneSerializable(home?.position ?? mother.position);
+      const child = this.createPerson('born', this.currentDay, mother.id, father.id, birthPosition);
       mother.childrenIds.push(child.id);
       father.childrenIds.push(child.id);
       mother.childrenIds.sort();
@@ -1051,7 +1078,11 @@ export class CurrentSimulation {
       this.addPersonMemory(father, { day: this.currentDay, importance: 90, subjectId: child.id, summary: `${child.name} was born.`, type: 'achievement' });
       this.stateValue.counters.births += 1;
       this.emit('birth', [child.id, mother.id, father.id], `${child.name} was born to ${mother.name} and ${father.name}.`, {
+        birthLocation: home === undefined ? 'mother-position' : 'home',
+        homeBuildingId: home?.id ?? '',
         sex: child.biologicalSex,
+        x: birthPosition.x,
+        z: birthPosition.z,
       });
     }
   }
@@ -1125,7 +1156,10 @@ export class CurrentSimulation {
     for (const person of this.alivePeople()) {
       let task: TaskType;
       let reason: string;
-      if (person.lifeStage === 'child') {
+      if (person.origin === 'born' && person.ageDays === 0) {
+        task = 'care';
+        reason = 'A newborn remains with their household for immediate care.';
+      } else if (person.lifeStage === 'child') {
         task = person.needs.social < 45 ? 'socialize' : 'learn';
         reason = task === 'learn' ? 'Learning from family and the settlement school.' : 'Seeking play and family contact.';
       } else if (person.lifeStage === 'adolescent') {
@@ -1167,20 +1201,31 @@ export class CurrentSimulation {
     let buildingType: BuildingType | null = null;
     switch (task) {
       case 'build': {
-        const project = this.activeConstructionProjects()[0];
+        const project = this.constructionProjectFor(person);
         return project === undefined ? { x: 0, y: 0, z: 0 } : cloneSerializable(project.position);
       }
       case 'eat': buildingType = 'market'; break;
       case 'fetch-water': buildingType = 'well'; break;
       case 'govern': buildingType = 'council-hall'; break;
-      case 'heal': case 'care': buildingType = 'clinic'; break;
+      case 'heal': buildingType = 'clinic'; break;
+      case 'care': {
+        if (person.origin === 'born' && person.ageDays === 0) {
+          const home = person.homeBuildingId === null ? undefined : this.stateValue.buildings[person.homeBuildingId];
+          return cloneSerializable(home?.position ?? person.position);
+        }
+        buildingType = 'clinic';
+        break;
+      }
       case 'learn': case 'research': buildingType = 'school'; break;
       case 'socialize': case 'trade': buildingType = 'market'; break;
       case 'rest': {
         const home = person.homeBuildingId === null ? undefined : this.stateValue.buildings[person.homeBuildingId];
         return home === undefined ? { x: 0, y: 0, z: 0 } : cloneSerializable(home.position);
       }
-      case 'work': buildingType = OCCUPATION_BUILDING[person.occupation] ?? null; break;
+      case 'work': {
+        const workplace = this.workplaceFor(person);
+        return workplace === undefined ? cloneSerializable(person.position) : cloneSerializable(workplace.position);
+      }
       case 'idle': case 'travel': return { x: 0, y: 0, z: 0 };
     }
     if (buildingType !== null) {
@@ -1206,8 +1251,9 @@ export class CurrentSimulation {
     economy.production.medicine += clinicCount * 2.2 * modifiers.healthCapacity;
     economy.production.tools += workshopCount * 1.4;
 
+    for (const person of this.alivePeople()) person.lastTaskSuccess = false;
     for (const person of this.alivePeople()) {
-      if (!isAdult(person) || !person.employed) continue;
+      if (!isAdult(person) || !person.employed || !this.canPerformProductiveTask(person) || !this.isAtTaskWorksite(person)) continue;
       const skillDomain = OCCUPATION_SKILL[person.occupation];
       const skill = person.skills[skillDomain];
       const capacity = (0.62 + person.health / 250 + person.needs.energy / 400) * (0.8 + skill / 220);
@@ -1236,6 +1282,8 @@ export class CurrentSimulation {
           person.knowledge = clamp(person.knowledge + 0.35 * output * modifiers.knowledgeGrowth);
           break;
         case 'build':
+          // Builders can recover and shape local timber and stone at the site;
+          // the same arrived workers must then deliver those units below.
           economy.production.wood += 0.8 * output;
           economy.production.stone += 0.5 * output;
           break;
@@ -1304,7 +1352,7 @@ export class CurrentSimulation {
       person.needs.social = clamp(person.needs.social + (person.currentTask === 'socialize' || person.currentTask === 'care' ? 14 : -4));
       person.needs.safety = clamp(person.needs.safety + (this.stateValue.settlement.safety - 50) / 18);
       if (person.currentTask === 'rest') person.needs.energy = clamp(person.needs.energy + 24);
-      if (person.currentTask === 'heal' && this.stateValue.settlement.resources.medicine >= 0.3) {
+      if (person.currentTask === 'heal' && this.isAtTaskWorksite(person) && this.stateValue.settlement.resources.medicine >= 0.3) {
         this.stateValue.settlement.resources.medicine -= 0.3;
         economy.consumption.medicine += 0.3;
         person.health = clamp(person.health + 7 * this.stateValue.settlement.modifiers.healthCapacity);
@@ -1354,59 +1402,50 @@ export class CurrentSimulation {
   private runEncounters(): void {
     const people = this.alivePeople();
     const processed = new Set<string>();
-    const existingByPerson = new Map<PersonId, Relationship[]>();
-    for (const relationship of sortedRecordValues(this.stateValue.relationships)) {
-      const left = existingByPerson.get(relationship.personAId) ?? [];
-      left.push(relationship);
-      existingByPerson.set(relationship.personAId, left);
-      const right = existingByPerson.get(relationship.personBId) ?? [];
-      right.push(relationship);
-      existingByPerson.set(relationship.personBId, right);
-    }
-    const occupationGroups = new Map<Occupation, Person[]>();
+    const spatialBuckets = new Map<string, Person[]>();
+    const contextGroups = new Map<string, Person[]>();
     for (const person of people) {
-      const group = occupationGroups.get(person.occupation) ?? [];
-      group.push(person);
-      occupationGroups.set(person.occupation, group);
+      const key = this.spatialBucketKey(person.position);
+      const bucket = spatialBuckets.get(key) ?? [];
+      bucket.push(person);
+      spatialBuckets.set(key, bucket);
+      for (const contextId of [this.actualHomeContextId(person), this.actualWorkContextId(person)]) {
+        if (contextId === null) continue;
+        const group = contextGroups.get(contextId) ?? [];
+        group.push(person);
+        contextGroups.set(contextId, group);
+      }
     }
-    for (let personIndex = 0; personIndex < people.length; personIndex += 1) {
-      const person = people[personIndex];
+    for (const person of people) {
       if (person === undefined) continue;
       const candidateMap = new Map<PersonId, Person>();
-      const existing = (existingByPerson.get(person.id) ?? [])
-        .sort((left, right) => right.affinity + right.trust - left.affinity - left.trust || left.id.localeCompare(right.id))
-        .slice(0, 3);
-      for (const relationship of existing) {
-        const otherId = relationship.personAId === person.id ? relationship.personBId : relationship.personAId;
-        const other = this.stateValue.people[otherId];
-        if (other?.alive) candidateMap.set(other.id, other);
-      }
-      if (person.householdId !== null) {
-        const household = this.stateValue.households[person.householdId];
-        for (const memberId of household?.memberIds ?? []) {
-          const member = this.stateValue.people[memberId];
-          if (member?.alive && member.id !== person.id) candidateMap.set(member.id, member);
+      const bucketX = Math.floor(person.position.x / ENCOUNTER_RADIUS_METERS);
+      const bucketZ = Math.floor(person.position.z / ENCOUNTER_RADIUS_METERS);
+      for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
+        for (let zOffset = -1; zOffset <= 1; zOffset += 1) {
+          const nearby = spatialBuckets.get(`${bucketX + xOffset}:${bucketZ + zOffset}`) ?? [];
+          for (const candidate of nearby) {
+            if (candidate.id !== person.id && this.canEncounter(person, candidate)) candidateMap.set(candidate.id, candidate);
+          }
         }
       }
-      const coworkers = occupationGroups.get(person.occupation) ?? [];
-      const coworkerIndex = coworkers.findIndex((candidate) => candidate.id === person.id);
-      for (const offset of [-1, 1]) {
-        const coworker = coworkers[(coworkerIndex + offset + coworkers.length) % Math.max(1, coworkers.length)];
-        if (coworker !== undefined && coworker.id !== person.id) candidateMap.set(coworker.id, coworker);
-      }
-      if (people.length > 1 && this.currentDay % 3 === Number.parseInt(person.id.slice(-1), 10) % 3) {
-        const newcomer = people[(personIndex + this.currentDay * 7 + 1) % people.length];
-        if (newcomer !== undefined && newcomer.id !== person.id) candidateMap.set(newcomer.id, newcomer);
+
+      // Site groups catch opposite edges of a large workplace or home without
+      // turning institutional membership into nonlocal interaction.
+      for (const contextId of [this.actualHomeContextId(person), this.actualWorkContextId(person)]) {
+        if (contextId === null) continue;
+        for (const candidate of contextGroups.get(contextId) ?? []) {
+          if (candidate.id !== person.id) candidateMap.set(candidate.id, candidate);
+        }
       }
       const candidates = [...candidateMap.values()]
         .map((candidate) => ({
           candidate,
           score:
-            (candidate.householdId !== null && candidate.householdId === person.householdId ? 100 : 0) +
-            (candidate.currentTask === person.currentTask ? 45 : 0) +
-            (candidate.occupation === person.occupation ? 35 : 0) +
+            (this.shareActualHomeContext(person, candidate) ? 100 : 0) +
+            (this.shareActualWorkContext(person, candidate) ? 65 : 0) +
             (this.stateValue.relationships[relationshipId(person.id, candidate.id)]?.affinity ?? 0) * 0.8 -
-            Math.min(40, Math.sqrt(distanceSquared(candidate.destination, person.destination))),
+            Math.min(40, Math.sqrt(distanceSquared(candidate.position, person.position))),
         }))
         .sort((left, right) => right.score - left.score || left.candidate.id.localeCompare(right.candidate.id));
       const encounterCount = Math.min(this.stateValue.config.relationships.encountersPerPerson, candidates.length);
@@ -1424,6 +1463,7 @@ export class CurrentSimulation {
   private updateRelationship(personA: Person, personB: Person, id: string): void {
     let relationship = this.stateValue.relationships[id];
     const firstMeeting = relationship === undefined;
+    const sharedWork = this.shareActualWorkContext(personA, personB);
     if (relationship === undefined) {
       const local = deterministicStream(this.seed, 'first-meeting', id);
       const compatibility = this.personCompatibility(personA, personB);
@@ -1431,7 +1471,7 @@ export class CurrentSimulation {
         id,
         personAId: personA.id < personB.id ? personA.id : personB.id,
         personBId: personA.id < personB.id ? personB.id : personA.id,
-        kind: personA.occupation === personB.occupation ? 'coworker' : 'acquaintance',
+        kind: sharedWork ? 'coworker' : 'acquaintance',
         affinity: clamp(28 + compatibility * 34 + local.int(-8, 8)),
         attraction: clamp(30 + compatibility * 35 + local.int(-9, 10)),
         trust: clamp(25 + compatibility * 28 + local.int(-6, 7)),
@@ -1449,7 +1489,6 @@ export class CurrentSimulation {
       this.addPersonMemory(personB, { day: this.currentDay, importance: 35, subjectId: personA.id, summary: `First met ${personA.name}.`, type: 'arrival' });
     }
     const local = deterministicStream(this.seed, 'encounter', this.currentDay, id);
-    const sharedWork = personA.currentTask === personB.currentTask && ['work', 'build', 'research', 'govern'].includes(personA.currentTask);
     if (sharedWork) relationship.sharedWorkDays += 1;
     const empathy = (personA.traits.empathy + personB.traits.empathy) / 200;
     const sociability = (personA.traits.sociability + personB.traits.sociability) / 200;
@@ -1612,7 +1651,10 @@ export class CurrentSimulation {
     for (let projectIndex = 0; projectIndex < projects.length; projectIndex += 1) {
       const building = projects[projectIndex];
       if (building === undefined) continue;
-      const assigned = builders.filter((_, index) => index % Math.max(1, projects.length) === projectIndex);
+      const assigned = builders.filter((person) =>
+        this.constructionProjectFor(person, projects)?.id === building.id &&
+        distanceSquared(person.position, building.position) <= TASK_SITE_RADIUS_METERS ** 2,
+      );
       building.builderIds = assigned.map((person) => person.id).sort();
       const deliveryCapacity = assigned.length * this.stateValue.config.construction.materialDeliveryPerWorker;
       let deliveredTotal = 0;
@@ -1669,9 +1711,11 @@ export class CurrentSimulation {
     for (const institution of sortedRecordValues(this.stateValue.institutions)) {
       institution.memberIds = institution.memberIds.filter((id) => this.stateValue.people[id]?.alive).sort();
       if (institution.kind === 'council') institution.memberIds = this.alivePeople().filter(isAdult).map((person) => person.id);
+      this.pruneInstitutionFollowers(institution);
       const needsElection = institution.leaderId === null || !this.stateValue.people[institution.leaderId]?.alive ||
         this.currentDay % this.stateValue.config.leadership.electionIntervalDays === 0;
       if (needsElection) this.electLeader(institution);
+      this.synchronizeInstitutionFollowers(institution);
       this.updateInstitutionPolicy(institution);
       institution.corruption = clamp(institution.corruption + this.institutionCorruptionDelta(institution));
     }
@@ -1707,18 +1751,22 @@ export class CurrentSimulation {
       .slice(0, 8);
     if (candidates.length === 0) {
       institution.leaderId = null;
+      institution.followerCandidateIds = {};
       institution.followerLoyalty = {};
       return;
     }
     const support = new Map<PersonId, { count: number; loyalty: number }>();
+    institution.followerCandidateIds = {};
     institution.followerLoyalty = {};
     for (const memberId of institution.memberIds) {
       const member = this.stateValue.people[memberId];
       if (member === undefined || !member.alive) continue;
       const choice = candidates
+        .filter((candidate) => candidate.id !== member.id)
         .map((candidate) => ({ candidate, score: this.followScore(member, candidate, institution) }))
         .sort((left, right) => right.score - left.score || left.candidate.id.localeCompare(right.candidate.id))[0];
       if (choice === undefined || choice.score < this.stateValue.config.leadership.followerTrust) continue;
+      institution.followerCandidateIds[member.id] = choice.candidate.id;
       institution.followerLoyalty[member.id] = round(choice.score);
       const record = support.get(choice.candidate.id) ?? { count: 0, loyalty: 0 };
       record.count += 1;
@@ -1736,13 +1784,6 @@ export class CurrentSimulation {
       )[0];
     const previous = institution.leaderId;
     institution.leaderId = winner?.candidate.id ?? null;
-    for (const candidate of candidates) candidate.followersIds = [];
-    for (const followerId of Object.keys(institution.followerLoyalty).sort()) {
-      const follower = this.stateValue.people[followerId];
-      if (follower === undefined || institution.leaderId === null || follower.id === institution.leaderId) continue;
-      const leader = this.stateValue.people[institution.leaderId];
-      if (leader !== undefined && !leader.followersIds.includes(follower.id)) leader.followersIds.push(follower.id);
-    }
     if (institution.leaderId !== null) {
       const leader = this.stateValue.people[institution.leaderId];
       if (leader !== undefined) {
@@ -1756,6 +1797,36 @@ export class CurrentSimulation {
         previousLeaderId: previous,
         leaderId: institution.leaderId,
       });
+    }
+  }
+
+  private pruneInstitutionFollowers(institution: Institution): void {
+    const members = new Set(institution.memberIds);
+    for (const followerId of Object.keys(institution.followerCandidateIds).sort()) {
+      const candidateId = institution.followerCandidateIds[followerId];
+      const follower = this.stateValue.people[followerId];
+      const candidate = candidateId === undefined ? undefined : this.stateValue.people[candidateId];
+      if (
+        follower === undefined || !follower.alive || !members.has(followerId) ||
+        candidate === undefined || !candidate.alive || !members.has(candidate.id) ||
+        follower.id === candidate.id
+      ) {
+        delete institution.followerCandidateIds[followerId];
+        delete institution.followerLoyalty[followerId];
+      }
+    }
+    for (const followerId of Object.keys(institution.followerLoyalty).sort()) {
+      if (institution.followerCandidateIds[followerId] === undefined) delete institution.followerLoyalty[followerId];
+    }
+  }
+
+  private synchronizeInstitutionFollowers(institution: Institution): void {
+    for (const [followerId, candidateId] of Object.entries(institution.followerCandidateIds).sort(([left], [right]) => left.localeCompare(right))) {
+      const candidate = this.stateValue.people[candidateId];
+      if (candidate !== undefined && candidate.alive && followerId !== candidateId && !candidate.followersIds.includes(followerId)) {
+        candidate.followersIds.push(followerId);
+        candidate.followersIds.sort();
+      }
     }
   }
 
@@ -1954,24 +2025,34 @@ export class CurrentSimulation {
     });
   }
 
-  private updateMovementAndPersonalGrowth(): void {
+  private updateMovement(): void {
     for (const person of this.alivePeople()) {
       const dx = person.destination.x - person.position.x;
       const dz = person.destination.z - person.position.z;
       const distance = Math.sqrt(dx * dx + dz * dz);
       const ageFactor = person.lifeStage === 'child' ? 0.68 : person.lifeStage === 'elder' ? 0.62 : person.lifeStage === 'older-adult' ? 0.82 : 1;
       const healthFactor = 0.45 + person.health / 180;
-      const step = Math.min(distance, 5.2 * ageFactor * healthFactor);
+      const step = Math.min(distance, DAILY_TRAVEL_METERS * ageFactor * healthFactor);
       if (distance > 0.0001) {
         person.position.x = round(person.position.x + dx / distance * step);
         person.position.z = round(person.position.z + dz / distance * step);
         person.yaw = round(Math.atan2(dx, dz));
       }
+    }
+  }
+
+  private updatePersonalGrowth(): void {
+    for (const person of this.alivePeople()) {
       if (person.currentTask === 'learn') {
-        const teachers = this.alivePeople().filter((candidate) => candidate.occupation === 'teacher' && candidate.currentTask === 'work').length;
-        person.knowledge = clamp(person.knowledge + (0.28 + teachers * 0.08) * this.stateValue.settlement.modifiers.knowledgeGrowth);
-        const interest = person.interests[(this.currentDay + Number.parseInt(person.id.slice(-2), 10)) % person.interests.length];
-        if (interest !== undefined) person.skills[interest] = clamp(person.skills[interest] + 0.22);
+        const school = this.buildingForTask(person, 'learn');
+        if (school !== undefined && distanceSquared(person.position, school.position) <= TASK_SITE_RADIUS_METERS ** 2) {
+          const teachers = this.alivePeople().filter((candidate) =>
+            candidate.occupation === 'teacher' && candidate.currentTask === 'work' && this.isAtTaskWorksite(candidate),
+          ).length;
+          person.knowledge = clamp(person.knowledge + (0.28 + teachers * 0.08) * this.stateValue.settlement.modifiers.knowledgeGrowth);
+          const interest = person.interests[(this.currentDay + Number.parseInt(person.id.slice(-2), 10)) % person.interests.length];
+          if (interest !== undefined) person.skills[interest] = clamp(person.skills[interest] + 0.22);
+        }
       }
       if (person.lastTaskSuccess) {
         person.influence.social = clamp(person.influence.social + 0.08 + person.traits.charisma / 1000);
@@ -2172,7 +2253,14 @@ export class CurrentSimulation {
     }
     for (const institution of sortedRecordValues(this.stateValue.institutions)) {
       institution.memberIds = institution.memberIds.filter((id) => id !== person.id);
+      delete institution.followerCandidateIds[person.id];
       delete institution.followerLoyalty[person.id];
+      for (const followerId of Object.keys(institution.followerCandidateIds).sort()) {
+        if (institution.followerCandidateIds[followerId] === person.id) {
+          delete institution.followerCandidateIds[followerId];
+          delete institution.followerLoyalty[followerId];
+        }
+      }
       if (institution.leaderId === person.id) institution.leaderId = null;
     }
     this.emit('death', [person.id], `${person.name} died from ${cause}.`, { cause, natural, inherited: round(inherited) });
@@ -2293,9 +2381,97 @@ export class CurrentSimulation {
     return sortedRecordValues(this.stateValue.institutions).find((institution) => institution.kind === 'council');
   }
 
+  private personAssignmentIndex(person: Person, count: number): number {
+    if (count <= 1) return 0;
+    const serial = Number.parseInt(person.id.split(':').at(-1) ?? '1', 10);
+    return (Number.isFinite(serial) ? Math.max(0, serial - 1) : 0) % count;
+  }
+
   private workplaceFor(person: Person): Building | undefined {
     const type = OCCUPATION_BUILDING[person.occupation];
-    return type === undefined ? undefined : this.completeBuildings().find((building) => building.type === type);
+    if (type === undefined) return undefined;
+    const workplaces = this.completeBuildings().filter((building) => building.type === type);
+    return workplaces[this.personAssignmentIndex(person, workplaces.length)];
+  }
+
+  private constructionProjectFor(person: Person, projects = this.activeConstructionProjects()): Building | undefined {
+    return projects[this.personAssignmentIndex(person, projects.length)];
+  }
+
+  private buildingForTask(person: Person, task: TaskType): Building | undefined {
+    switch (task) {
+      case 'build': return this.constructionProjectFor(person);
+      case 'work': return this.workplaceFor(person);
+      case 'trade': case 'socialize': case 'eat':
+        return this.completeBuildings().find((building) => building.type === 'market');
+      case 'heal': case 'care':
+        return this.completeBuildings().find((building) => building.type === 'clinic');
+      case 'govern':
+        return this.completeBuildings().find((building) => building.type === 'council-hall');
+      case 'learn': case 'research':
+        return this.completeBuildings().find((building) => building.type === 'school');
+      case 'fetch-water':
+        return this.completeBuildings().find((building) => building.type === 'well');
+      case 'rest':
+        return person.homeBuildingId === null ? undefined : this.stateValue.buildings[person.homeBuildingId];
+      case 'idle': case 'travel':
+        return undefined;
+    }
+  }
+
+  private isAtTaskWorksite(person: Person): boolean {
+    const worksite = this.buildingForTask(person, person.currentTask);
+    return worksite !== undefined && distanceSquared(person.position, worksite.position) <= TASK_SITE_RADIUS_METERS ** 2;
+  }
+
+  private canPerformProductiveTask(person: Person): boolean {
+    switch (person.currentTask) {
+      case 'work': return true;
+      case 'build': return person.occupation === 'builder' || person.occupation === 'laborer';
+      case 'care': return person.occupation === 'caregiver';
+      case 'govern': return person.occupation === 'organizer' || this.primaryInstitution()?.leaderId === person.id;
+      case 'heal': return person.occupation === 'healer';
+      case 'research': return person.occupation === 'researcher' || person.occupation === 'inventor';
+      case 'trade': return person.occupation === 'trader';
+      case 'eat': case 'fetch-water': case 'idle': case 'learn': case 'rest': case 'socialize': case 'travel':
+        return false;
+    }
+  }
+
+  private spatialBucketKey(position: Position3): string {
+    return `${Math.floor(position.x / ENCOUNTER_RADIUS_METERS)}:${Math.floor(position.z / ENCOUNTER_RADIUS_METERS)}`;
+  }
+
+  private actualHomeContextId(person: Person): string | null {
+    if (person.householdId === null || person.homeBuildingId === null) return null;
+    const home = this.stateValue.buildings[person.homeBuildingId];
+    if (home === undefined) return null;
+    const radiusSquared = SHARED_CONTEXT_RADIUS_METERS ** 2;
+    return distanceSquared(person.position, home.position) <= radiusSquared ? `home:${person.householdId}:${home.id}` : null;
+  }
+
+  private actualWorkContextId(person: Person): string | null {
+    const productiveTasks: readonly TaskType[] = ['build', 'care', 'govern', 'heal', 'research', 'trade', 'work'];
+    if (!productiveTasks.includes(person.currentTask)) return null;
+    const site = this.buildingForTask(person, person.currentTask);
+    if (site === undefined) return null;
+    const radiusSquared = SHARED_CONTEXT_RADIUS_METERS ** 2;
+    return distanceSquared(person.position, site.position) <= radiusSquared ? `work:${site.id}` : null;
+  }
+
+  private shareActualHomeContext(left: Person, right: Person): boolean {
+    const contextId = this.actualHomeContextId(left);
+    return contextId !== null && contextId === this.actualHomeContextId(right);
+  }
+
+  private shareActualWorkContext(left: Person, right: Person): boolean {
+    const contextId = this.actualWorkContextId(left);
+    return contextId !== null && contextId === this.actualWorkContextId(right);
+  }
+
+  private canEncounter(left: Person, right: Person): boolean {
+    return distanceSquared(left.position, right.position) <= ENCOUNTER_RADIUS_METERS ** 2 ||
+      this.shareActualHomeContext(left, right) || this.shareActualWorkContext(left, right);
   }
 
   private housingCapacity(): number {

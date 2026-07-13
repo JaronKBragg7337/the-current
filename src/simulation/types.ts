@@ -436,6 +436,8 @@ export interface Institution {
   founderIds: PersonId[];
   memberIds: PersonId[];
   leaderId: PersonId | null;
+  /** Candidate currently supported by each follower in this institution. */
+  followerCandidateIds: Record<PersonId, PersonId>;
   followerLoyalty: Record<PersonId, number>;
   legitimacy: number;
   corruption: number;
