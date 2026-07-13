@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { CurrentPersistence, requestPersistentStorage } from '../persistence';
-import type { ExternalInputRecord } from '../persistence';
 import type {
   NormalizedSignal,
   ObserverIntervention,
@@ -12,43 +11,28 @@ import {
   createBrowserSimulationHost,
   createInProcessSimulationHost,
   createWorkerCommand,
+  createWorkerRequestId,
 } from '../worker';
 import type {
   HostPerformanceMetrics,
+  ReadyResponse,
   SimulationHost,
+  SimulationWorkerCommand,
   SimulationWorkerResponse,
 } from '../worker';
+import {
+  AutosaveScheduler,
+  TimedWaiterRegistry,
+  calculateRecoveryDay,
+  createTimedDeferred,
+  drainPendingOperations,
+  queuedWorldDay,
+  type TimedDeferred,
+} from './runtimePersistence';
 
 const DEFAULT_WORLD_ID = 'the-current-public-current-001';
 const DEFAULT_SEED = 'current-public-001';
 const AUTOSAVE_INTERVAL_DAYS = 1;
-
-interface DeferredPersistence {
-  promise: Promise<void>;
-  reject: (reason: unknown) => void;
-  resolve: () => void;
-}
-
-function createDeferredPersistence(): DeferredPersistence {
-  let resolvePromise: (() => void) | undefined;
-  let rejectPromise: ((reason: unknown) => void) | undefined;
-  const promise = new Promise<void>((resolve, reject) => {
-    resolvePromise = resolve;
-    rejectPromise = reject;
-  });
-  void promise.catch(() => undefined);
-  return {
-    promise,
-    reject: (reason) => rejectPromise?.(reason),
-    resolve: () => resolvePromise?.(),
-  };
-}
-
-function queuedWorldDay(record: ExternalInputRecord): number {
-  if (record.queuedDay !== undefined) return record.queuedDay;
-  if (record.kind === 'signal') return record.input.timestampDay;
-  return Math.max(0, record.effectiveDay - 1);
-}
 
 function projectionIntervalForSpeed(daysPerSecond: number): number {
   return Math.max(1, Math.ceil(daysPerSecond / 16));
@@ -103,9 +87,15 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   const persistenceReadyRef = useRef<Promise<void>>(Promise.resolve());
   const worldIdRef = useRef(DEFAULT_WORLD_ID);
   const lastSaveRequestedDayRef = useRef(-1);
+  const lastPersistedDayRef = useRef(-1);
   const currentDayRef = useRef(0);
   const downloadRequestsRef = useRef(new Set<string>());
-  const snapshotWaitersRef = useRef(new Map<string, DeferredPersistence>());
+  const snapshotWaitersRef = useRef(new TimedWaiterRegistry<void>());
+  const hostResponseWaitersRef = useRef(new TimedWaiterRegistry<SimulationWorkerResponse>());
+  const pendingPersistenceWritesRef = useRef(new Set<Promise<void>>());
+  const autosaveSchedulerRef = useRef<AutosaveScheduler | null>(null);
+  const hostTransitionRef = useRef(false);
+  const fatalHostErrorRef = useRef<Error | null>(null);
   const speedRef = useRef(1);
   const pausedRef = useRef(true);
   const [projection, setProjection] = useState<WorldProjection | null>(null);
@@ -122,25 +112,53 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   useEffect(() => {
     let active = true;
     const pendingSnapshotWaiters = snapshotWaitersRef.current;
+    const pendingHostResponseWaiters = hostResponseWaitersRef.current;
     const persistence = new CurrentPersistence();
     const created = createHost();
-    let initialPersistence: DeferredPersistence | null = null;
+    let initialPersistence: TimedDeferred<void> | null = null;
+    let initialSnapshotRequestId: string | null = null;
     let needsInitialSnapshot = false;
     persistenceRef.current = persistence;
     hostRef.current = created.host;
+    fatalHostErrorRef.current = null;
     setUsingWorker(created.usingWorker);
 
-    const requestSnapshot = (day: number, download: boolean): void => {
-      if (day === lastSaveRequestedDayRef.current && !download) return;
-      const command = createWorkerCommand({ type: 'EXPORT' });
+    const reportPersistenceError = (caught: unknown): void => {
+      if (!active) return;
+      setSaveStatus('error');
+      setError(caught instanceof Error ? caught.message : String(caught));
+    };
+
+    const trackPersistenceOperation = (operation: Promise<void>): void => {
+      pendingPersistenceWritesRef.current.add(operation);
+      void operation.finally(() => pendingPersistenceWritesRef.current.delete(operation));
+    };
+
+    const postSnapshotRequest = (
+      day: number,
+      requestId = createWorkerRequestId('snapshot'),
+      download = false,
+    ): string => {
+      const command = createWorkerCommand({ type: 'EXPORT' }, requestId);
       lastSaveRequestedDayRef.current = day;
       if (download) downloadRequestsRef.current.add(command.requestId);
       setSaveStatus('saving');
       created.host.post(command);
+      return command.requestId;
     };
+
+    const autosaveScheduler = new AutosaveScheduler({
+      idFactory: () => createWorkerRequestId('autosave'),
+      onError: reportPersistenceError,
+      request: (day, requestId) => postSnapshotRequest(day, requestId),
+    });
+    autosaveSchedulerRef.current = autosaveScheduler;
 
     const handleResponse = (response: SimulationWorkerResponse): void => {
       if (!active) return;
+      if (response.type === 'READY' && response.inReplyTo !== null) {
+        pendingHostResponseWaiters.resolve(response.inReplyTo, response);
+      }
       switch (response.type) {
         case 'READY':
           setReady(true);
@@ -150,7 +168,7 @@ export function useSimulationRuntime(): SimulationRuntimeView {
           setSpeedState(speedRef.current);
           if (needsInitialSnapshot) {
             needsInitialSnapshot = false;
-            requestSnapshot(response.day, false);
+            initialSnapshotRequestId = postSnapshotRequest(response.day);
           }
           return;
         case 'PROJECTION':
@@ -159,16 +177,22 @@ export function useSimulationRuntime(): SimulationRuntimeView {
           if (
             response.projection.day > 0 &&
             response.projection.day % AUTOSAVE_INTERVAL_DAYS === 0 &&
-            response.projection.day !== lastSaveRequestedDayRef.current
+            response.projection.day > lastPersistedDayRef.current &&
+            !hostTransitionRef.current
           ) {
-            requestSnapshot(response.projection.day, false);
+            autosaveScheduler.queue(response.projection.day);
           }
           return;
         case 'EVENT_BATCH':
           if (response.events.length > 0) {
-            void persistence.appendEventChunk(worldIdRef.current, response.events).catch(() => {
+            const eventWorldId = worldIdRef.current;
+            const operation = persistence.appendEventChunk(eventWorldId, response.events).then(
+              () => undefined,
+              () => {
               // The authoritative snapshot still contains the event history.
-            });
+              },
+            );
+            trackPersistenceOperation(operation);
           }
           return;
         case 'METRICS':
@@ -179,25 +203,33 @@ export function useSimulationRuntime(): SimulationRuntimeView {
           setInspectedPerson(response.value);
           return;
         case 'SNAPSHOT': {
-          const shouldDownload = response.inReplyTo !== null && downloadRequestsRef.current.delete(response.inReplyTo);
-          const waiter = response.inReplyTo === null
-            ? undefined
-            : snapshotWaitersRef.current.get(response.inReplyTo);
-          void persistence
+          const requestId = response.inReplyTo;
+          const snapshotWorldId = worldIdRef.current;
+          const shouldDownload = requestId !== null && downloadRequestsRef.current.delete(requestId);
+          const operation = persistence
             .saveWorldSnapshot({
-              worldId: worldIdRef.current,
+              worldId: snapshotWorldId,
               snapshot: response.snapshot,
               name: 'The Current — Confluence',
             })
             .then(async () => {
-              initialPersistence?.resolve();
-              initialPersistence = null;
-              waiter?.resolve();
-              if (response.inReplyTo !== null) snapshotWaitersRef.current.delete(response.inReplyTo);
+              lastPersistedDayRef.current = Math.max(
+                lastPersistedDayRef.current,
+                response.snapshot.day,
+              );
+              if (requestId === initialSnapshotRequestId) {
+                initialPersistence?.resolve(undefined);
+                initialPersistence = null;
+                initialSnapshotRequestId = null;
+              }
+              if (requestId !== null) {
+                pendingSnapshotWaiters.resolve(requestId, undefined);
+                autosaveScheduler.complete(requestId);
+              }
               if (!active) return;
               setSaveStatus('saved');
               if (shouldDownload) {
-                const json = await persistence.exportWorldJson(worldIdRef.current, {
+                const json = await persistence.exportWorldJson(snapshotWorldId, {
                   includeExternalInputs: true,
                   includeHistory: true,
                 });
@@ -205,19 +237,45 @@ export function useSimulationRuntime(): SimulationRuntimeView {
               }
             })
             .catch((caught: unknown) => {
-              initialPersistence?.reject(caught);
-              initialPersistence = null;
-              waiter?.reject(caught);
-              if (response.inReplyTo !== null) snapshotWaitersRef.current.delete(response.inReplyTo);
-              if (!active) return;
-              setSaveStatus('error');
-              setError(caught instanceof Error ? caught.message : String(caught));
+              if (requestId === initialSnapshotRequestId) {
+                initialPersistence?.reject(caught);
+                initialPersistence = null;
+                initialSnapshotRequestId = null;
+              }
+              if (requestId !== null) {
+                pendingSnapshotWaiters.reject(requestId, caught);
+                autosaveScheduler.fail(requestId, caught);
+              }
+              reportPersistenceError(caught);
             });
+          trackPersistenceOperation(operation);
           return;
         }
-        case 'ERROR':
+        case 'ERROR': {
+          const failure = new Error(response.message);
+          if (response.inReplyTo !== null) {
+            pendingSnapshotWaiters.reject(response.inReplyTo, failure);
+            pendingHostResponseWaiters.reject(response.inReplyTo, failure);
+            autosaveScheduler.fail(response.inReplyTo, failure);
+            if (response.inReplyTo === initialSnapshotRequestId) {
+              initialPersistence?.reject(failure);
+              initialPersistence = null;
+              initialSnapshotRequestId = null;
+            }
+          }
+          if (!response.recoverable) {
+            fatalHostErrorRef.current = failure;
+            pendingSnapshotWaiters.rejectAll(failure);
+            pendingHostResponseWaiters.rejectAll(failure);
+            initialPersistence?.reject(failure);
+            initialPersistence = null;
+            initialSnapshotRequestId = null;
+            autosaveScheduler.abort();
+            setSaveStatus('error');
+          }
           setError(response.message);
           return;
+        }
       }
     };
 
@@ -228,7 +286,7 @@ export function useSimulationRuntime(): SimulationRuntimeView {
       .then(async (loaded) => {
         if (!active) return;
         if (loaded === null) {
-          initialPersistence = createDeferredPersistence();
+          initialPersistence = createTimedDeferred<void>('Initial world persistence');
           persistenceReadyRef.current = initialPersistence.promise;
           needsInitialSnapshot = true;
           created.host.post(createWorkerCommand({
@@ -246,15 +304,18 @@ export function useSimulationRuntime(): SimulationRuntimeView {
           persistenceReadyRef.current = Promise.resolve();
           worldIdRef.current = loaded.world.id;
           lastSaveRequestedDayRef.current = loaded.snapshot.day;
+          lastPersistedDayRef.current = loaded.snapshot.day;
+          currentDayRef.current = loaded.snapshot.day;
           created.host.post(createWorkerCommand({
             type: 'LOAD',
             snapshot: loaded.snapshot,
             speed: { daysPerSecond: 1, maxDaysPerSlice: 4, projectionEveryDays: 1, metricsEveryDays: 5 },
             startPaused: true,
           }));
-          const recoveryDay = laterEventChunks.reduce(
-            (latest, chunk) => Math.max(latest, chunk.lastDay),
+          const recoveryDay = calculateRecoveryDay(
             loaded.snapshot.day,
+            laterEventChunks,
+            externalInputs,
           );
           const replayInputs = externalInputs
             .filter((record) => queuedWorldDay(record) >= loaded.snapshot.day)
@@ -284,7 +345,8 @@ export function useSimulationRuntime(): SimulationRuntimeView {
       .catch((caught: unknown) => {
         if (!active) return;
         setError(caught instanceof Error ? caught.message : String(caught));
-        initialPersistence = createDeferredPersistence();
+        if (fatalHostErrorRef.current !== null) return;
+        initialPersistence = createTimedDeferred<void>('Fallback world persistence');
         persistenceReadyRef.current = initialPersistence.promise;
         needsInitialSnapshot = true;
         created.host.post(createWorkerCommand({
@@ -295,15 +357,30 @@ export function useSimulationRuntime(): SimulationRuntimeView {
       });
 
     const handleVisibilityChange = (): void => {
-      if (document.visibilityState === 'hidden') requestSnapshot(currentDayRef.current, false);
+      if (
+        document.visibilityState === 'hidden'
+        && fatalHostErrorRef.current === null
+        && !hostTransitionRef.current
+      ) {
+        try {
+          postSnapshotRequest(currentDayRef.current);
+        } catch (caught: unknown) {
+          reportPersistenceError(caught);
+        }
+      }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      pendingSnapshotWaiters.forEach((waiter) => waiter.reject(new Error('Simulation host closed before persistence completed')));
-      pendingSnapshotWaiters.clear();
+      const closed = new Error('Simulation host closed before persistence completed');
+      pendingSnapshotWaiters.rejectAll(closed);
+      pendingHostResponseWaiters.rejectAll(closed);
+      initialPersistence?.reject(closed);
+      autosaveScheduler.dispose();
+      autosaveSchedulerRef.current = null;
+      hostTransitionRef.current = false;
       unsubscribe();
       created.host.terminate();
       void persistence.close();
@@ -312,19 +389,69 @@ export function useSimulationRuntime(): SimulationRuntimeView {
     };
   }, []);
 
+  const postAndWaitForReady = useCallback(async (
+    command: SimulationWorkerCommand,
+    label: string,
+  ): Promise<ReadyResponse> => {
+    const fatalFailure = fatalHostErrorRef.current;
+    if (fatalFailure !== null) throw fatalFailure;
+    const host = hostRef.current;
+    if (host === null) throw new Error('Simulation host is not ready');
+    const responsePromise = hostResponseWaitersRef.current.wait(command.requestId, label);
+    try {
+      host.post(command);
+    } catch (caught: unknown) {
+      hostResponseWaitersRef.current.reject(command.requestId, caught);
+    }
+    const response = await responsePromise;
+    if (response.type !== 'READY') {
+      throw new Error(`${label} received ${response.type} instead of READY`);
+    }
+    return response;
+  }, []);
+
   const persistHostState = useCallback(async (): Promise<void> => {
+    const fatalFailure = fatalHostErrorRef.current;
+    if (fatalFailure !== null) throw fatalFailure;
+    if (hostTransitionRef.current) throw new Error('World replacement is in progress');
     const host = hostRef.current;
     if (host === null) throw new Error('Simulation host is not ready');
     const command = createWorkerCommand({ type: 'EXPORT' });
-    const waiter = createDeferredPersistence();
-    snapshotWaitersRef.current.set(command.requestId, waiter);
+    const persisted = snapshotWaitersRef.current.wait(
+      command.requestId,
+      `Snapshot persistence for day ${currentDayRef.current.toString()}`,
+    );
     lastSaveRequestedDayRef.current = currentDayRef.current;
     setSaveStatus('saving');
-    host.post(command);
-    await waiter.promise;
+    try {
+      host.post(command);
+    } catch (caught: unknown) {
+      snapshotWaitersRef.current.reject(command.requestId, caught);
+    }
+    try {
+      await persisted;
+    } catch (caught: unknown) {
+      setSaveStatus('error');
+      setError(caught instanceof Error ? caught.message : String(caught));
+      throw caught;
+    }
+  }, []);
+
+  const awaitTrackedPersistence = useCallback(async <T,>(operation: Promise<T>): Promise<T> => {
+    const completion = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    pendingPersistenceWritesRef.current.add(completion);
+    try {
+      return await operation;
+    } finally {
+      pendingPersistenceWritesRef.current.delete(completion);
+    }
   }, []);
 
   const setSpeed = useCallback((daysPerSecond: number): void => {
+    if (hostTransitionRef.current) return;
     const host = hostRef.current;
     if (host === null) return;
     speedRef.current = daysPerSecond;
@@ -343,6 +470,7 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   }, []);
 
   const togglePause = useCallback((): void => {
+    if (hostTransitionRef.current) return;
     const host = hostRef.current;
     if (host === null) return;
     if (pausedRef.current) {
@@ -357,10 +485,12 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   }, [persistHostState, setSpeed]);
 
   const advanceDays = useCallback((days: number): void => {
+    if (hostTransitionRef.current) return;
     hostRef.current?.post(createWorkerCommand({ type: 'ADVANCE', days, projectionEveryDays: 1 }));
   }, []);
 
   const inspectPerson = useCallback((personId: string): void => {
+    if (hostTransitionRef.current) return;
     setInspectedPersonId(personId);
     hostRef.current?.post(createWorkerCommand({
       type: 'INSPECT',
@@ -371,27 +501,40 @@ export function useSimulationRuntime(): SimulationRuntimeView {
 
   const submitIntervention = useCallback(async (intervention: ObserverIntervention): Promise<void> => {
     await persistenceReadyRef.current;
+    if (hostTransitionRef.current) throw new Error('World replacement is in progress');
+    const fatalFailure = fatalHostErrorRef.current;
+    if (fatalFailure !== null) throw fatalFailure;
     const persistence = persistenceRef.current;
     if (persistence !== null) {
-      await persistence.saveIntervention(worldIdRef.current, intervention, currentDayRef.current);
+      await awaitTrackedPersistence(
+        persistence.saveIntervention(worldIdRef.current, intervention, currentDayRef.current),
+      );
     }
+    if (hostTransitionRef.current) throw new Error('World replacement is in progress');
     const host = hostRef.current;
     if (host === null) throw new Error('Simulation host is not ready');
     host.post(createWorkerCommand({ type: 'INTERVENTION', intervention }));
     await persistHostState();
-  }, [persistHostState]);
+  }, [awaitTrackedPersistence, persistHostState]);
 
   const submitSignal = useCallback(async (signal: NormalizedSignal): Promise<void> => {
     await persistenceReadyRef.current;
+    if (hostTransitionRef.current) throw new Error('World replacement is in progress');
+    const fatalFailure = fatalHostErrorRef.current;
+    if (fatalFailure !== null) throw fatalFailure;
     const persistence = persistenceRef.current;
-    if (persistence !== null) await persistence.saveSignal(worldIdRef.current, signal);
+    if (persistence !== null) {
+      await awaitTrackedPersistence(persistence.saveSignal(worldIdRef.current, signal));
+    }
+    if (hostTransitionRef.current) throw new Error('World replacement is in progress');
     const host = hostRef.current;
     if (host === null) throw new Error('Simulation host is not ready');
     host.post(createWorkerCommand({ type: 'SIGNAL', signal }));
     await persistHostState();
-  }, [persistHostState]);
+  }, [awaitTrackedPersistence, persistHostState]);
 
   const saveNow = useCallback((): void => {
+    if (hostTransitionRef.current) return;
     const day = projection?.day ?? 0;
     lastSaveRequestedDayRef.current = day;
     setSaveStatus('saving');
@@ -399,6 +542,7 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   }, [projection?.day]);
 
   const exportWorld = useCallback((): void => {
+    if (hostTransitionRef.current) return;
     const command = createWorkerCommand({ type: 'EXPORT' });
     downloadRequestsRef.current.add(command.requestId);
     setSaveStatus('saving');
@@ -406,20 +550,68 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   }, []);
 
   const importWorld = useCallback(async (json: string): Promise<void> => {
+    await persistenceReadyRef.current;
+    const fatalFailure = fatalHostErrorRef.current;
+    if (fatalFailure !== null) throw fatalFailure;
     const persistence = persistenceRef.current;
     const host = hostRef.current;
     if (persistence === null || host === null) throw new Error('Simulation persistence is not ready');
-    const loaded = await persistence.importWorldJson(json, { replaceExisting: true });
-    worldIdRef.current = loaded.world.id;
-    lastSaveRequestedDayRef.current = loaded.snapshot.day;
-    host.post(createWorkerCommand({
-      type: 'LOAD',
-      snapshot: loaded.snapshot,
-      speed: { daysPerSecond: speedRef.current || 1 },
-      startPaused: true,
-    }));
-    setSaveStatus('saved');
-  }, []);
+    if (hostTransitionRef.current) throw new Error('World replacement is already in progress');
+    hostTransitionRef.current = true;
+    // Stop both the pending timer and any coalesced old-world day before the
+    // PAUSE command is posted. The transition gate prevents projections that
+    // arrive while waiting for the barrier from scheduling another export.
+    autosaveSchedulerRef.current?.abort();
+
+    try {
+      // PAUSE is a worker command-queue barrier: every earlier response is
+      // delivered before its correlated READY. Waiting for local IndexedDB
+      // writes after that barrier prevents old-world saves from racing import.
+      await postAndWaitForReady(
+        createWorkerCommand({ type: 'PAUSE' }),
+        'Pause before world import',
+      );
+      await drainPendingOperations(pendingPersistenceWritesRef.current);
+
+      const loaded = await persistence.importWorldJson(json, { replaceExisting: true });
+      worldIdRef.current = loaded.world.id;
+      lastSaveRequestedDayRef.current = loaded.snapshot.day;
+      lastPersistedDayRef.current = loaded.snapshot.day;
+      currentDayRef.current = loaded.snapshot.day;
+      setReady(false);
+      setProjection(null);
+      setInspectedPerson(null);
+      setInspectedPersonId(null);
+
+      try {
+        await postAndWaitForReady(
+          createWorkerCommand({
+            type: 'LOAD',
+            snapshot: loaded.snapshot,
+            speed: { daysPerSecond: speedRef.current || 1 },
+            startPaused: true,
+          }),
+          'Load imported world',
+        );
+      } catch (caught: unknown) {
+        const failure = caught instanceof Error ? caught : new Error(String(caught));
+        // Persistence now names the imported world. Stopping the old host is
+        // safer than allowing old authoritative state to save under that identity.
+        fatalHostErrorRef.current = failure;
+        snapshotWaitersRef.current.rejectAll(failure);
+        hostResponseWaitersRef.current.rejectAll(failure);
+        host.terminate();
+        hostRef.current = null;
+        setReady(false);
+        setSaveStatus('error');
+        setError(failure.message);
+        throw failure;
+      }
+      setSaveStatus('saved');
+    } finally {
+      hostTransitionRef.current = false;
+    }
+  }, [postAndWaitForReady]);
 
   return {
     projection,

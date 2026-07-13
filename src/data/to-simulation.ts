@@ -69,7 +69,11 @@ export function toSimulationSignal(
   }
 
   return {
-    id: signal.id,
+    // A normalized source signal can be submitted on more than one world day.
+    // The occurrence identity keeps the captured source lineage while making
+    // persistence append-only across later submissions instead of overwriting
+    // the first queued-day record under the source signal ID.
+    id: `${signal.id}:queued:${options.timestampDay.toString()}:effective:${effectiveDay.toString()}`,
     sourceIds: [...signal.observationIds],
     domain: signal.domain,
     geography: serializeGeography(signal.geography),

@@ -1,5 +1,5 @@
 # Dependencies and package-manager state
-node_modules/
+node_modules*/
 .pnpm-store/
 .npm/
 
@@ -36,6 +36,8 @@ data/saves/
 data/cache/
 data/raw/
 benchmarks/results/
+!benchmarks/results/
+benchmarks/results/*
 !benchmarks/results/.gitkeep
 
 # Asset source cache and generated intermediates
@@ -65,4 +67,3 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.dmp
-

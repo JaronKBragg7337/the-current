@@ -109,11 +109,11 @@ function printHelp(): void {
   console.info(`The Current external-signal ingestion
 
 Usage:
-  pnpm data:ingest                         Write the deterministic offline fixture
-  pnpm data:ingest -- --live              Fetch credential-free live sources
-  pnpm data:ingest -- --live --out PATH   Choose the output snapshot
-  pnpm data:ingest -- --live --previous PATH
-  pnpm data:ingest -- --open-meteo LAT,LON[,ID]
+  npm run data:ingest                         Write the deterministic offline fixture
+  npm run data:ingest -- --live               Fetch credential-free live sources
+  npm run data:ingest -- --live --out PATH    Choose the output snapshot
+  npm run data:ingest -- --live --previous PATH
+  npm run data:ingest -- --open-meteo LAT,LON[,ID]
 
 Live mode fetches USGS, NASA EONET, NOAA SWPC, and Hacker News metadata.
 Open-Meteo is opt-in because its hosted free API is non-commercial only.

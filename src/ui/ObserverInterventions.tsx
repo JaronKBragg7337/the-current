@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import type { ObserverIntervention } from '../simulation/types';
 
@@ -237,6 +237,14 @@ function createInterventionId(actionId: InterventionActionId, currentDay: number
   return `observer:${currentDay}:${actionId}:${randomPart}`;
 }
 
+function persistBudget(budget: BudgetState): void {
+  try {
+    globalThis.localStorage?.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budget));
+  } catch {
+    // Storage can be unavailable; the mounted component still enforces the budget.
+  }
+}
+
 export function ObserverInterventions({
   currentDay,
   targetSettlementId,
@@ -255,6 +263,9 @@ export function ObserverInterventions({
   const [budget, setBudget] = useState<BudgetState>(() =>
     loadStoredBudget(currentDay, initialEnergy, capacity),
   );
+  const budgetRef = useRef(budget);
+  const mountedRef = useRef(true);
+  const pendingActionRef = useRef<InterventionActionId | null>(null);
   const [note, setNote] = useState('');
   const [pendingActionId, setPendingActionId] = useState<InterventionActionId | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -262,24 +273,38 @@ export function ObserverInterventions({
   const availableEnergy = energyOnDay(budget, currentDay, capacity, regenerationPerDay);
 
   useEffect(() => {
-    try {
-      globalThis.localStorage?.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budget));
-    } catch {
-      // Storage can be unavailable; the mounted component still enforces the budget.
-    }
-  }, [budget]);
+    mountedRef.current = true;
+    persistBudget(budgetRef.current);
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  function commitBudget(nextBudget: BudgetState): void {
+    budgetRef.current = nextBudget;
+    persistBudget(nextBudget);
+    if (mountedRef.current) setBudget(nextBudget);
+  }
 
   async function submitAction(action: InterventionAction): Promise<void> {
-    const cooldownUntil = budget.cooldownUntil[action.id] ?? 0;
+    const currentBudget = budgetRef.current;
+    const currentEnergy = energyOnDay(
+      currentBudget,
+      currentDay,
+      capacity,
+      regenerationPerDay,
+    );
+    const cooldownUntil = currentBudget.cooldownUntil[action.id] ?? 0;
     if (
       disabled ||
-      pendingActionId !== null ||
+      pendingActionRef.current !== null ||
       currentDay < cooldownUntil ||
-      availableEnergy < action.energyCost
+      currentEnergy < action.energyCost
     ) {
       return;
     }
 
+    pendingActionRef.current = action.id;
     setPendingActionId(action.id);
     setError(null);
     setStatus(null);
@@ -293,26 +318,43 @@ export function ObserverInterventions({
       targetSettlementId,
       note: note.trim() === '' ? action.mixedConsequence : note.trim().slice(0, 240),
     };
+    const previousCooldown = currentBudget.cooldownUntil[action.id];
+    const optimisticCooldown = currentDay + action.cooldownDays;
+    commitBudget({
+      energy: currentEnergy - action.energyCost,
+      accountedDay: currentDay,
+      cooldownUntil: {
+        ...currentBudget.cooldownUntil,
+        [action.id]: optimisticCooldown,
+      },
+    });
 
     try {
       await onSubmitIntervention(intervention);
-      setBudget((previous) => ({
-        energy:
-          energyOnDay(previous, currentDay, capacity, regenerationPerDay) - action.energyCost,
-        accountedDay: currentDay,
-        cooldownUntil: {
-          ...previous.cooldownUntil,
-          [action.id]: currentDay + action.cooldownDays,
-        },
-      }));
-      setStatus(
-        `${action.label} queued for world day ${intervention.effectiveDay}. Residents retain agency over every consequence.`,
-      );
-      setNote('');
+      if (mountedRef.current) {
+        setStatus(
+          `${action.label} queued for world day ${intervention.effectiveDay}. Residents retain agency over every consequence.`,
+        );
+        setNote('');
+      }
     } catch {
-      setError('The intervention could not be queued. No observer energy was spent.');
+      const latestBudget = budgetRef.current;
+      const restoredCooldowns = { ...latestBudget.cooldownUntil };
+      if (restoredCooldowns[action.id] === optimisticCooldown) {
+        if (previousCooldown === undefined) delete restoredCooldowns[action.id];
+        else restoredCooldowns[action.id] = previousCooldown;
+      }
+      commitBudget({
+        energy: clamp(latestBudget.energy + action.energyCost, 0, capacity),
+        accountedDay: latestBudget.accountedDay,
+        cooldownUntil: restoredCooldowns,
+      });
+      if (mountedRef.current) {
+        setError('The intervention could not be queued. No observer energy was spent.');
+      }
     } finally {
-      setPendingActionId(null);
+      pendingActionRef.current = null;
+      if (mountedRef.current) setPendingActionId(null);
     }
   }
 

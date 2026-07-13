@@ -73,8 +73,12 @@ describe('external information normalization', () => {
       effectiveDay: 13,
     });
     const projectedAttention = toSimulationSignal(attention, { timestampDay: 12 });
+    const laterAttention = toSimulationSignal(attention, { timestampDay: 14 });
     expect(projectedEarthquake.objectivePressure.construction).toBeGreaterThan(0);
     expect(projectedEarthquake.effectiveDay).toBe(13);
+    expect(projectedEarthquake.id).toContain(':queued:12:effective:13');
+    expect(laterAttention.id).not.toBe(projectedAttention.id);
+    expect(laterAttention.sourceIds).toEqual(projectedAttention.sourceIds);
     expect(projectedAttention.objectivePressure.knowledge).toBeUndefined();
     expect(projectedAttention.beliefPressure.knowledge).toBeGreaterThan(0);
   });

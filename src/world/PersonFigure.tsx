@@ -6,6 +6,7 @@ import { MathUtils, Vector3 } from 'three';
 
 import type { CameraMode } from '../app/types';
 import type { Occupation, PersonProjection } from '../simulation';
+import { shouldRenderDetailedPerson } from './populationTiers';
 import { deterministicUnit, terrainHeight } from './terrain';
 
 interface PersonFigureProps {
@@ -50,7 +51,10 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
   const torsoRef = useRef<Mesh>(null);
   const { camera } = useThree();
   const target = useMemo(() => new Vector3(), []);
-  const cameraProbe = useMemo(() => new Vector3(), []);
+  const groundHeight = useMemo(
+    () => terrainHeight(person.position.x, person.position.z),
+    [person.position.x, person.position.z],
+  );
   const bodySeed = deterministicUnit(`${person.id}:body`);
   const skin = paletteValue(SKIN_TONES, bodySeed);
   const hair = person.lifeStage === 'elder'
@@ -66,18 +70,21 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
     if (root === null) return;
     target.set(
       person.position.x,
-      terrainHeight(person.position.x, person.position.z),
+      groundHeight,
       person.position.z,
     );
+    const selectedFirstPerson = selected && cameraMode === 'first-person';
+    root.visible = shouldRenderDetailedPerson(
+      camera.position.distanceToSquared(target),
+      selected,
+      selectedFirstPerson,
+    );
+    if (!root.visible) return;
+
     root.position.x = MathUtils.damp(root.position.x, target.x, 4.5, delta);
     root.position.y = MathUtils.damp(root.position.y, target.y, 6, delta);
     root.position.z = MathUtils.damp(root.position.z, target.z, 4.5, delta);
     root.rotation.y = MathUtils.damp(root.rotation.y, person.yaw, 5, delta);
-
-    cameraProbe.copy(root.position);
-    const distance = camera.position.distanceTo(cameraProbe);
-    root.visible = (selected || distance < 62) && !(selected && cameraMode === 'first-person');
-    if (!root.visible) return;
 
     const active = !['idle', 'rest', 'eat'].includes(person.task);
     const speed = person.task === 'travel' ? 6.4 : person.task === 'build' || person.task === 'work' ? 5.1 : 3.4;
@@ -111,7 +118,7 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
     <group
       ref={rootRef}
       name={`person:${person.id}`}
-      position={[person.position.x, terrainHeight(person.position.x, person.position.z), person.position.z]}
+      position={[person.position.x, groundHeight, person.position.z]}
       rotation={[0, person.yaw, 0]}
       scale={[heightScale * bodyWidth, heightScale * childScale, heightScale * bodyWidth]}
       onClick={handleSelect}

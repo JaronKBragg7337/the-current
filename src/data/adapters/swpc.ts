@@ -23,15 +23,17 @@ function recordsFromPayload(payload: unknown): readonly Record<string, unknown>[
   if (!Array.isArray(payload) || payload.length === 0) {
     return [];
   }
-  const first = payload[0];
+  const rows = payload as unknown[];
+  const first = rows[0];
   if (Array.isArray(first)) {
     const headers = first.map((value) => String(value));
-    return payload.slice(1).flatMap((row) => {
+    return rows.slice(1).flatMap((row) => {
       if (!Array.isArray(row)) return [];
-      return [Object.fromEntries(headers.map((header, index) => [header, row[index]]))];
+      const cells = row as unknown[];
+      return [Object.fromEntries(headers.map((header, index) => [header, cells[index]]))];
     });
   }
-  return payload
+  return rows
     .map(asRecord)
     .filter((item): item is Record<string, unknown> => item !== undefined);
 }

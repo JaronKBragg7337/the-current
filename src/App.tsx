@@ -26,6 +26,7 @@ const EMPTY_RENDER_DIAGNOSTICS: RenderDiagnostics = {
   textures: 0,
   fps: 0,
 };
+const MAX_IMPORT_FILE_BYTES = 128 * 1024 * 1024;
 
 type PanelKey = 'history' | 'interventions' | 'metrics' | 'signals';
 type PanelState = Record<PanelKey, boolean>;
@@ -72,6 +73,7 @@ export function App() {
   });
   const [interfaceHidden, setInterfaceHidden] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [importError, setImportError] = useState<string | null>(null);
   const [renderDiagnostics, setRenderDiagnostics] = useState(EMPTY_RENDER_DIAGNOSTICS);
   const [cameraDiagnostics, setCameraDiagnostics] = useState<CameraDiagnostics>({
     position: [96, 76, 96],
@@ -217,12 +219,27 @@ export function App() {
   }, [projection, vehicles]);
 
   const handleImportFile = useCallback(async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    if (file === undefined) return;
-    await importWorld(await file.text());
-    setSelection(null);
-    setCameraMode('orbital');
-    event.target.value = '';
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    setImportError(null);
+
+    try {
+      if (file === undefined) return;
+      if (file.size > MAX_IMPORT_FILE_BYTES) {
+        throw new Error('The selected file exceeds the 128 MB import limit.');
+      }
+
+      await importWorld(await file.text());
+      setSelection(null);
+      setCameraMode('orbital');
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim() !== ''
+        ? error.message
+        : 'The selected file could not be read or restored.';
+      setImportError(`World import failed: ${detail}`);
+    } finally {
+      input.value = '';
+    }
   }, [importWorld]);
 
   if (projection === null) return <LoadingScreen error={runtime.error} />;
@@ -292,30 +309,32 @@ export function App() {
               onClose={() => togglePanel('metrics')}
             />
           )}
-          <aside
-            className="intervention-panel glass-panel"
-            aria-label="Observer interventions"
-            hidden={!panels.interventions}
-          >
-            <button className="floating-close close-button" type="button" onClick={() => togglePanel('interventions')} aria-label="Close interventions">×</button>
-            <ObserverInterventions
-              currentDay={projection.day}
-              targetSettlementId={projection.settlementId}
-              onSubmitIntervention={runtime.submitIntervention}
-            />
-          </aside>
-          {panels.signals && (
-            <aside className="signals-panel glass-panel" aria-label="External information signals">
-              <button className="floating-close close-button" type="button" onClick={() => togglePanel('signals')} aria-label="Close outside signals">×</button>
-              <ExternalSignals
-                currentDay={projection.day}
-                effectiveDay={projection.day + 1}
-                onSubmitSignal={runtime.submitSignal}
-              />
-            </aside>
-          )}
         </>
       )}
+      <aside
+        className="intervention-panel glass-panel"
+        aria-label="Observer interventions"
+        hidden={interfaceHidden || !panels.interventions}
+      >
+        <button className="floating-close close-button" type="button" onClick={() => togglePanel('interventions')} aria-label="Close interventions">×</button>
+        <ObserverInterventions
+          currentDay={projection.day}
+          targetSettlementId={projection.settlementId}
+          onSubmitIntervention={runtime.submitIntervention}
+        />
+      </aside>
+      <aside
+        className="signals-panel glass-panel"
+        aria-label="External information signals"
+        hidden={interfaceHidden || !panels.signals}
+      >
+        <button className="floating-close close-button" type="button" onClick={() => togglePanel('signals')} aria-label="Close outside signals">×</button>
+        <ExternalSignals
+          currentDay={projection.day}
+          effectiveDay={projection.day + 1}
+          onSubmitSignal={runtime.submitSignal}
+        />
+      </aside>
       <CameraDock
         mode={cameraMode}
         hasSelectedPerson={selectedPerson !== null}
@@ -323,11 +342,12 @@ export function App() {
         onModeChange={handleCameraMode}
         onToggleInterface={() => setInterfaceHidden((hidden) => !hidden)}
       />
-      {runtime.error !== null && <p className="error-toast" role="alert">{runtime.error}</p>}
+      {(importError ?? runtime.error) !== null && (
+        <p className="error-toast" role="alert">{importError ?? runtime.error}</p>
+      )}
       {showWelcome && (
         <WelcomeOverlay onEnter={() => {
           setShowWelcome(false);
-          runtime.setSpeed(1);
         }} />
       )}
       <input
