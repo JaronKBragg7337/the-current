@@ -1687,7 +1687,7 @@ export class CurrentSimulation {
     else if (alive >= 80 && this.completeBuildings().filter((building) => building.type === 'power-station').length < 1 && !queuedTypes.has('power-station')) type = 'power-station';
     if (type === null) return;
     const local = deterministicStream(this.streamSeed(), 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
-    const position = findBuildingSite(local, type, Object.values(this.stateValue.buildings));
+    const position = findBuildingSite(local, type, sortedRecordValues(this.stateValue.buildings));
     if (position === null) return;
     const commissioner = this.primaryInstitution()?.id ?? null;
     const building = this.createBuilding(type, position, false, commissioner);
@@ -2092,7 +2092,7 @@ export class CurrentSimulation {
   }
 
   private updateMovement(): void {
-    const obstacles: PlacementObstacle[] = Object.values(this.stateValue.buildings)
+    const obstacles: PlacementObstacle[] = sortedRecordValues(this.stateValue.buildings)
       .filter((building) => building.type !== 'road')
       .map((building) => ({ type: building.type, position: { x: building.position.x, z: building.position.z } }));
     for (const person of this.alivePeople()) {

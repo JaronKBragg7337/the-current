@@ -13,12 +13,12 @@
 // The entropy inputs are stored in `the_current_entropy` (service-role only)
 // so the recorded past stays exactly replayable for audit.
 //
-// Regenerate simulation.bundle.js after engine changes with:
-//   npm run server:bundle
+// The engine is imported from the public repository pinned to an exact
+// commit (esm.sh transpiles the TypeScript). To pick up engine changes,
+// push them, then redeploy this function with the new commit hash.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-// deno-lint-ignore no-explicit-any
-import * as simulation from './simulation.bundle.js';
+import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@c4d6bc8743a96f281ac32a40a67c7c1cd64a736c/src/simulation/index.ts';
 
 const WORLD_ID = 'main';
 const SHARED_SEED = 'current-shared-001';

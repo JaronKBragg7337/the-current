@@ -31,3 +31,16 @@ Live third-party fetches are not part of deterministic simulation startup. A bui
 ## ADR-008 — Exact compatible dependency pins
 
 The lockfile pins every direct dependency exactly. A registry check on 2026-07-13 found every direct package current except two intentional compatibility pins: `@types/node` stays on the Node 24 line because Node 24 is the supported runtime, and TypeScript stays at 5.9.3 because `typescript-eslint` 8.63.0 declares TypeScript support from 4.8.4 through versions below 6.1.0. TypeScript 7.0.2 was therefore not forced into an unsupported lint/tooling combination merely because its registry tag was newer. Re-evaluate those two together when the ESLint toolchain declares support.
+
+
+## ADR-010 - Authoritative physical layout lives in the simulation
+
+Building footprints, road corridors, setbacks, and settlement bounds are simulation data (src/simulation/placement.ts). Site selection rejects overlaps and road intrusions and expands the settlement outward in growth rings when the founding district fills; the renderer and vehicle routing import the same tables so what the rules enforce is exactly what viewers see.
+
+## ADR-011 - Hidden entropy as a recorded daily input
+
+DayInputs.entropy mixes host-drawn cryptographic entropy into two hash chains (surface for ordinary randomness, deep for rare high-impact outcomes). The mix is an ordinary timestamped event, so the recorded past replays exactly while the future is uncomputable from the seed. Without the input the engine stays bit-for-bit deterministic for tests and audit.
+
+## ADR-012 - One shared world, hosted on Supabase, spectator clients
+
+A scheduled edge function (supabase/functions/the-current-tick) is the only writer of the world: it advances the simulation at a fixed real-time pace (default one world day per real hour) with fresh entropy per day, guarded by an optimistic day-number lock. The world row is publicly readable; the entropy audit table is service-role only. Production clients poll and project the snapshot with time controls removed; ?world=local (and dev builds by default) run a private local world instead. The engine is imported into the function from the public repository pinned to an exact commit via esm.sh.

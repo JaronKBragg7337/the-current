@@ -28,6 +28,21 @@ This is still an early civilization, not the complete master specification. It h
 
 See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser evidence, and qualifications.
 
+## 2026-07-13 session: physical integrity, hidden entropy, one shared world
+
+| Area | Status | Evidence and boundary |
+| --- | --- | --- |
+| Building placement integrity | verified | `src/simulation/placement.ts` owns footprints, road corridors, setbacks (4 m), and growth rings; bootstrap and 200-day runs produce zero overlapping footprints and zero road intrusions (`placement.test.ts`) |
+| Settlement growth rings | verified | When the founding district saturates, construction expands outward instead of overlapping; construction is skipped entirely rather than ever double-stacking |
+| Vehicles on roads only | verified | Two lanes per authoritative road derived from centerlines; 200-day construction runs never place a building in a lane (`vehicles.test.ts`) |
+| Traveler/building collision | verified | People passing an unrelated building are deflected to its footprint edge (deterministic, order-independent) |
+| Reputation-based following | verified | Leadership survives the founding generation dying out (previously collapsed to zero around day 125); leaderless institutions lower their follower threshold per the specification's "lack of alternatives" |
+| Layered hidden entropy | verified | `DayInputs.entropy` feeds two hash chains (surface + deep); past replays exactly from recorded inputs, future uncomputable from the seed; 6 passing tests including Postgres-jsonb key-order round-trip |
+| One shared authoritative world | verified | Supabase-hosted: `the-current-tick` edge function advances the world at a fixed pace (1 world day per real hour) with cryptographic entropy per day; world row publicly readable, entropy audit table service-role only; cron every 10 minutes; world created at day 0, digest `c9e11dc317f318a5` |
+| Shared spectator clients | verified locally | Production clients default to polling the shared world; time controls, save, and import are replaced by a LIVE badge; `?world=local` opts into a private local world; dev/tests default to local |
+| Shared-world interventions | unimplemented | Spectator clients cannot yet submit interventions to the shared world; requires a server-side intervention queue with budgets (next action) |
+| Pre-existing Windows-local test failures | known issue | `App.inspection.test.tsx` and `ObserverInterventions.test.tsx` fail locally on Windows with `act is not a function` — confirmed pre-existing on a clean checkout (git stash test); CI on Linux runs them green |
+
 ## Systems that function
 
 ### Authoritative simulation
@@ -75,9 +90,11 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 
 ## Strongest next technical opportunities
 
-1. Make work and exchange economically real: employer capacity, wages, household inventories, price-constrained purchases, staffed building output, businesses, ownership, debt, and auditable goods transfers.
-2. Replace straight-line travel and decorative traffic with one authoritative road/nav graph, vehicles, cargo inventories, travel time, delivery events, and congestion/failure consequences.
-3. Add a second settlement so information, prices, migration, trade, institutions, and interventions can diverge under the same world signal.
-4. Add historical projections and replay controls built from retained events/milestone snapshots, including building provenance and complete life records.
-5. Reduce rendering cost with real medium/far tiers, shared geometry/materials, component culling, shadow LOD, and benchmarks on representative desktop/mobile GPUs.
-6. Design the server-authoritative public-world service only after local simulation schemas, migrations, input ordering, and operational data licensing are stable.
+1. Shared-world interventions: a public `the_current_interventions` queue with budgets/cooldowns that the tick function feeds into `DayInputs`, so spectators can influence the one world within limits.
+2. Delta sync for spectators: publish per-day event deltas beside the snapshot so clients stop re-downloading the full (multi-MB at scale) world row every change.
+3. Rigged CC0 humanoid/animation stack through the documented asset pipeline, replacing procedural people at near distance (candidates already cataloged in `docs/ASSETS.md`).
+4. Make work and exchange economically real: employer capacity, wages, household inventories, price-constrained purchases, staffed building output, businesses, ownership, debt, and auditable goods transfers.
+5. Replace straight-line travel and decorative traffic with one authoritative road/nav graph, vehicles, cargo inventories, travel time, delivery events, and congestion/failure consequences (vehicle lanes now derive from authoritative roads; cargo and inventories remain presentational).
+6. Add a second settlement so information, prices, migration, trade, institutions, and interventions can diverge under the same world signal.
+7. Add historical projections and replay controls built from retained events/milestone snapshots, including building provenance and complete life records; the shared world's entropy audit table already preserves exact replayability.
+8. Reduce rendering cost with real medium/far tiers, shared geometry/materials, component culling, shadow LOD, and benchmarks on representative desktop/mobile GPUs.

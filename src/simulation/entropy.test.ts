@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { canonicalStringify } from './canonical';
 import { createSimulation, restoreSimulation } from './index';
 import type { DayInputs } from './types';
+import type { WorldSnapshot } from './types';
 
 const EMPTY: DayInputs = { signals: [], interventions: [] };
 
@@ -50,6 +52,23 @@ describe('hidden entropy layers', () => {
     for (let day = 21; day <= 40; day += 1) {
       original.advanceDay(EMPTY);
       resumed.advanceDay(EMPTY);
+    }
+    expect(resumed.snapshot().digest).toBe(original.snapshot().digest);
+  });
+
+  it('continues identically after a key-order-normalizing round trip (Postgres jsonb)', () => {
+    const original = createSimulation({ seed: 'entropy-jsonb' });
+    for (let day = 1; day <= 15; day += 1) {
+      original.advanceDay(day % 4 === 0 ? { ...EMPTY, entropy: `jsonb-${day}` } : EMPTY);
+    }
+    // Postgres jsonb does not preserve object key order; canonicalStringify
+    // sorts keys, which reproduces that normalization.
+    const roundTripped = JSON.parse(canonicalStringify(original.snapshot())) as WorldSnapshot;
+    const resumed = restoreSimulation(roundTripped);
+    for (let day = 16; day <= 40; day += 1) {
+      const inputs = day % 4 === 0 ? { ...EMPTY, entropy: `jsonb-${day}` } : EMPTY;
+      original.advanceDay(inputs);
+      resumed.advanceDay(inputs);
     }
     expect(resumed.snapshot().digest).toBe(original.snapshot().digest);
   });

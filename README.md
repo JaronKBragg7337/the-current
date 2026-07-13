@@ -2,7 +2,9 @@
 
 The Current is a local-first, deterministic civilization simulation presented as a Three.js spectator world. Its inhabitants enter, move, work, meet, form households and relationships, reproduce, build, lead, experiment, inherit, and die without a player character. An observer can watch from orbit, follow an NPC, or see through an NPC's eyes, but cannot steer that person.
 
-This is a working first implementation, not the finished civilization described by the specification. The population loop, persistence, worker isolation, causal inputs, and 3D spectator experience run today. Businesses, laws and ideologies, multiple settlements, road-based navigation, authoritative vehicles and goods, long-form historical replay, and a shared public-world backend remain future work. See [the exact implementation status](docs/STATUS.md).
+This is a working first implementation, not the finished civilization described by the specification. The population loop, persistence, worker isolation, causal inputs, and 3D spectator experience run today. Businesses, laws and ideologies, multiple settlements, road-based navigation, and long-form historical replay remain future work. See [the exact implementation status](docs/STATUS.md).
+
+**One shared world.** In production the application spectates a single server-hosted authoritative world that advances at a fixed pace (one world day per real hour) with hidden cryptographic entropy mixed into every day — every viewer sees the same world regardless of who is watching, nobody can pause it, speed it up, or fork it, and the future cannot be precomputed from the seed by anyone, including its operators. Append `?world=local` to run a private, fully local world instead (development builds default to local).
 
 ![The Current's procedural settlement in orbital view](docs/screenshots/orbital-world-final.png)
 
