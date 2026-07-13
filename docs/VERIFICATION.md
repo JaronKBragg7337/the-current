@@ -8,13 +8,14 @@ Updated 2026-07-13. This record separates automated evidence, manual browser evi
 | --- | --- | --- |
 | `npm run lint` | pass, zero warnings | ESLint over source, tests, scripts, and configuration |
 | `npm run typecheck` | pass | TypeScript project references |
-| `npm run test` | 59 passed, 16 files | Simulation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, inspections, and camera correctness |
-| `npm run assets:validate` | pass | 0 incorporated external assets, 0 runtime asset files, 28 researched candidates; manifests/schema valid |
+| `npm run test` | 76 passed, 20 files | Simulation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, road winding, resource tiers, inspections, and camera correctness |
+| `npm run assets:validate` | pass | 0 incorporated external assets, 1 project-authored runtime bundle, 28 researched candidates; manifests, hashes, roots, and source/runtime paths valid |
 | `npm run licenses:validate` | pass | 564 resolved lockfile package paths match the committed machine-readable license inventory |
 | `npm audit --omit=dev` | pass | 0 known runtime vulnerabilities reported by npm on 2026-07-13 |
 | 150-day verifier | pass, 23/23 checks, 150 replayed days | Seed `current-public-001`, midpoint restore at day 75, digest `f13e5fe87589ffc3` |
 | 500-day verifier | pass, 23/23 checks, 500 replayed days | Seed `current-endurance-001`, midpoint restore at day 250, digest `c54644b90116daa4` |
-| Production/base-path builds | pass at final integration | Root, `/the-current/`, and `/worlds/the-current/`; 699 modules transformed; both subpaths passed the committed static reference/fixture verifier |
+| Fresh 150-day verifier | pass, 23/23 checks, exact replay | Seed `current-public-001`; digest `26739dc51ad6cb37`; 173 final living people; 4,739.828 ms authoritative advance |
+| Production/base-path builds | pass at final integration | Root, `/the-current/`, and `/worlds/the-current/`; 706 modules transformed; both subpaths passed the committed static reference/fixture verifier; runtime GLB emitted at 263.73 kB |
 | Full Playwright matrix | 10 passed, 6 skipped, 0 failed | One frozen-tree invocation, one WebGL worker at a time; desktop Chromium and emulated Pixel 7 |
 
 Vitest has focused coverage for:
@@ -50,6 +51,12 @@ The final Playwright invocation exercised the configured `/the-current/` base pa
 | Welcome | [welcome.png](screenshots/welcome.png) | Primary 3D world behind the start/identity overlay |
 | Orbital | [orbital-world-final.png](screenshots/orbital-world-final.png) | Terrain, water, settlement, farms, roads, buildings, people, UI |
 | Third person | [third-person-follow-fixed.png](screenshots/third-person-follow-fixed.png) | Autonomous selected-NPC follow framing after collision fixes |
+| Before, desktop orbit | [before-local-desktop-orbit.png](screenshots/visual-pass/before-local-desktop-orbit.png) | Primitive pre-pass local settlement baseline |
+| After, desktop orbit | [after-local-desktop-orbit.png](screenshots/visual-pass/after-local-desktop-orbit.png) | Road hierarchy, plaza, district/resource anchors, building silhouettes, carts, and vegetation |
+| After, third-person follow | [after-local-third-person-follow.png](screenshots/visual-pass/after-local-third-person-follow.png) | Proportioned selected citizen, persistent appearance, market work context, and shoulder framing |
+| After, first person | [after-local-first-person.png](screenshots/visual-pass/after-local-first-person.png) | Unobstructed eye-height spectator view with street-scale doors, roofs, lighting, water, and market props |
+| After, mobile orbit | [after-local-mobile-orbit.png](screenshots/visual-pass/after-local-mobile-orbit.png) | Pixel 7-sized settlement readability and world-first control layout |
+| Blender kit preview | [blender-confluence-kit.png](screenshots/visual-pass/blender-confluence-kit.png) | Reproducible authored resource/street/transport kit before runtime optimization |
 
 Screenshots establish visual state, not simulation causality or frame-rate performance. First-person behavior and all camera transitions are covered by the browser assertions above; the corresponding authoritative behavior is checked through projections, inspections, digests, and event/state assertions.
 
@@ -66,7 +73,7 @@ All four adapters completed in that probe. Live results are intentionally uncomm
 
 ## Browser performance observation
 
-Renderer diagnostics in the automated Chromium environment sampled about 727 calls / 99,048 triangles / 282 geometries / 47 fps at the fresh orbital view, and about 781 calls / 103,300 triangles / 350 geometries / 45 fps at day 3. Software rendering and capture overhead may apply; see [PERFORMANCE.md](PERFORMANCE.md). These values do not meet a production draw-call budget.
+The final visual-pass automated capture sampled 409 calls / 165,588 triangles / 170 geometries in desktop orbit, 258 / 129,704 / 185 in follow, 635 / 165,072 / 458 in first person, and 367 / 158,644 / 159 at Pixel 7 size. Its 3–7 fps values came from capture-bound software Chromium and are not device claims. Relative to the 815-call intermediate scene, building LOD cut orbital calls about 50%; see [PERFORMANCE.md](PERFORMANCE.md) and the committed [raw measurements](screenshots/visual-pass/performance-local.json).
 
 ## Acceptance coverage
 
