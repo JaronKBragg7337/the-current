@@ -150,6 +150,16 @@ export class SimulationWorkerRuntime {
     if (this.state === 'stopped') {
       throw new Error('Simulation host has been stopped');
     }
+    if (this.simulation === null && command.type !== 'INIT' && command.type !== 'LOAD') {
+      this.emitError(
+        command.requestId,
+        'NOT_INITIALIZED',
+        'Simulation is not initialized; send INIT or LOAD first',
+        true,
+        command.type,
+      );
+      return;
+    }
 
     switch (command.type) {
       case 'INIT': {

@@ -107,6 +107,13 @@ describe('in-process simulation host', () => {
       code: 'PROTOCOL_MISMATCH',
       inReplyTo: 'request:wrong-version',
     });
+
+    await host.dispatch(createWorkerCommand({ type: 'ADVANCE', days: 1 }, 'request:before-init'));
+    expect(responses.at(-1)).toMatchObject({
+      type: 'ERROR',
+      code: 'NOT_INITIALIZED',
+      inReplyTo: 'request:before-init',
+    });
     host.terminate();
   });
 
