@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "url": "https://ygjpnvrwhkrowkrskftk.supabase.co",
+  "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnanBudnJ3aGtyb3drcnNrZnRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3MDUsImV4cCI6MjA5NjIwMzcwNX0.3-HrVpYavJsAy8BAF7zIsGwJ_W0CZXcMdVxCI5OqPCo",
+  "pollSeconds": 20,
+  "_comment": "Public spectator config for the single shared authoritative world. The anonKey is a Supabase publishable key (public by design, read-only via RLS). Production clients default to the shared world; ?world=local opts into a private local world."
+}

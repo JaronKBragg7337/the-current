@@ -2,7 +2,7 @@ import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CameraMode, Selection } from './app/types';
-import { useSimulationRuntime } from './app/useSimulationRuntime';
+import { useWorldRuntime, type WorldRuntime } from './app/sharedWorldRuntime';
 import { CameraDock } from './ui/CameraDock';
 import { EventTimeline } from './ui/EventTimeline';
 import { ExternalSignals } from './ui/ExternalSignals';
@@ -57,7 +57,12 @@ declare global {
 }
 
 export function App() {
-  const runtime = useSimulationRuntime();
+  const runtime = useWorldRuntime();
+  if (runtime === null) return <LoadingScreen error={null} />;
+  return <AppView runtime={runtime} />;
+}
+
+function AppView({ runtime }: { runtime: WorldRuntime }) {
   const inspectPerson = runtime.inspectPerson;
   const setSimulationSpeed = runtime.setSpeed;
   const toggleSimulationPause = runtime.togglePause;
@@ -269,6 +274,7 @@ export function App() {
             speed={runtime.speed}
             saveStatus={runtime.saveStatus}
             usingWorker={runtime.usingWorker}
+            liveWorld={runtime.liveWorld}
             panelsOpen={panels}
             onTogglePause={runtime.togglePause}
             onSpeedChange={runtime.setSpeed}

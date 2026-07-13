@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results'] },
+  // supabase/functions runs on Deno with remote imports; it is deployed and
+  // type-checked by the Supabase toolchain rather than this project service.
+  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'supabase/functions'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,

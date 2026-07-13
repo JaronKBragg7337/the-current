@@ -81,7 +81,7 @@ function createHost(): { host: SimulationHost; usingWorker: boolean } {
   return { host: createInProcessSimulationHost(), usingWorker: false };
 }
 
-export function useSimulationRuntime(): SimulationRuntimeView {
+export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
   const hostRef = useRef<SimulationHost | null>(null);
   const persistenceRef = useRef<CurrentPersistence | null>(null);
   const persistenceReadyRef = useRef<Promise<void>>(Promise.resolve());
@@ -110,6 +110,9 @@ export function useSimulationRuntime(): SimulationRuntimeView {
   const [usingWorker, setUsingWorker] = useState(true);
 
   useEffect(() => {
+    // When the app is spectating the shared authoritative world, no local
+    // simulation host or persistence should ever be created.
+    if (!enabled) return undefined;
     let active = true;
     const pendingSnapshotWaiters = snapshotWaitersRef.current;
     const pendingHostResponseWaiters = hostResponseWaitersRef.current;
@@ -387,7 +390,7 @@ export function useSimulationRuntime(): SimulationRuntimeView {
       hostRef.current = null;
       persistenceRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   const postAndWaitForReady = useCallback(async (
     command: SimulationWorkerCommand,
