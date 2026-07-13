@@ -39,6 +39,7 @@ import {
 
 const WORLD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PREFERENCE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SNAPSHOT_MILESTONE_INTERVAL_DAYS = 25;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -229,6 +230,9 @@ function validateExternalInputRecord(record: ExternalInputRecord, worldId?: stri
     throw new Error(`External input ${record.key} belongs to ${record.worldId}, expected ${worldId}`);
   }
   assertNonEmptyString(record.inputId, 'externalInput.inputId');
+  if (record.queuedDay !== undefined) {
+    assertSafeNonNegativeInteger(record.queuedDay, 'externalInput.queuedDay');
+  }
   assertSafeNonNegativeInteger(record.effectiveDay, 'externalInput.effectiveDay');
   assertIsoTimestamp(record.recordedAt, 'externalInput.recordedAt');
   if (record.kind !== 'signal' && record.kind !== 'intervention') {
@@ -329,12 +333,6 @@ export class CurrentPersistence {
           `Cannot move world ${options.worldId} backward from day ${existing.latestDay} to ${options.snapshot.day}`,
         );
       }
-      if (
-        options.snapshot.day === existing.latestDay &&
-        options.snapshot.digest !== existing.latestDigest
-      ) {
-        throw new Error(`World ${options.worldId} already has a different snapshot for day ${options.snapshot.day}`);
-      }
     }
 
     const timestamp = this.timestamp();
@@ -364,6 +362,20 @@ export class CurrentPersistence {
     };
     assertIsoTimestamp(world.createdAt, 'world.createdAt');
     await snapshots.put(snapshotRecord);
+    if (
+      existing !== undefined
+      && existing.latestDay === options.snapshot.day
+      && existing.latestSnapshotKey !== key
+    ) {
+      await snapshots.delete(existing.latestSnapshotKey);
+    }
+    const retainedCandidates = await snapshots.index('by-world').getAll(options.worldId);
+    await Promise.all(retainedCandidates.flatMap((candidate) => {
+      const isCurrent = candidate.key === key;
+      const isInitial = candidate.day === 0;
+      const isMilestone = candidate.day % SNAPSHOT_MILESTONE_INTERVAL_DAYS === 0;
+      return isCurrent || isInitial || isMilestone ? [] : [snapshots.delete(candidate.key)];
+    }));
     await worlds.put(world);
     await transaction.done;
     return cloneValue(world);
@@ -496,6 +508,7 @@ export class CurrentPersistence {
       worldId,
       inputId: signal.id,
       kind: 'signal',
+      queuedDay: signal.timestampDay,
       effectiveDay: signal.effectiveDay,
       recordedAt: this.timestamp(),
       digest: canonicalDigest(signal),
@@ -508,7 +521,9 @@ export class CurrentPersistence {
   async saveIntervention(
     worldId: string,
     intervention: ObserverIntervention,
+    queuedDay = Math.max(0, intervention.effectiveDay - 1),
   ): Promise<InterventionInputRecord> {
+    assertSafeNonNegativeInteger(queuedDay, 'queuedDay');
     assertNonEmptyString(intervention.id, 'intervention.id');
     assertSafeNonNegativeInteger(intervention.effectiveDay, 'intervention.effectiveDay');
     const record: InterventionInputRecord = {
@@ -517,6 +532,7 @@ export class CurrentPersistence {
       worldId,
       inputId: intervention.id,
       kind: 'intervention',
+      queuedDay,
       effectiveDay: intervention.effectiveDay,
       recordedAt: this.timestamp(),
       digest: canonicalDigest(intervention),

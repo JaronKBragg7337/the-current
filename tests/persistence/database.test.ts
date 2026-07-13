@@ -91,6 +91,26 @@ describe('CurrentPersistence', () => {
     ).rejects.toThrow('Cannot move world');
   });
 
+  it('replaces same-day state and retains only replay milestones plus the latest snapshot', async () => {
+    const store = createStore('retention');
+    const simulation = createSimulation({ seed: 'persistence-retention' });
+    await store.saveWorldSnapshot({ worldId: 'world:retention', snapshot: simulation.snapshot() });
+
+    simulation.queueSignal(signal);
+    const amendedDayZero = simulation.snapshot();
+    await store.saveWorldSnapshot({ worldId: 'world:retention', snapshot: amendedDayZero });
+    expect((await store.loadWorld('world:retention'))?.snapshot.digest).toBe(amendedDayZero.digest);
+
+    for (let day = 1; day <= 30; day += 1) {
+      simulation.advanceDays(1);
+      await store.saveWorldSnapshot({ worldId: 'world:retention', snapshot: simulation.snapshot() });
+    }
+
+    const snapshots = await store.listSnapshots('world:retention');
+    expect(snapshots.map((snapshot) => snapshot.day)).toEqual([0, 25, 30]);
+    expect(snapshots.at(-1)?.digest).toBe(simulation.digest());
+  });
+
   it('round-trips world history, external inputs, preferences, and deterministic continuation through JSON', async () => {
     const source = createStore('export-source');
     const target = createStore('export-target');

@@ -59,6 +59,7 @@ interface ExternalInputRecordBase {
   key: string;
   worldId: string;
   inputId: string;
+  queuedDay?: number;
   effectiveDay: number;
   recordedAt: string;
   digest: string;

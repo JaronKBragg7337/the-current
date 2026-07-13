@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import type { ObserverIntervention } from '../simulation/types';
 
@@ -173,6 +173,7 @@ const INTERVENTION_ACTIONS = [
 ] as const satisfies readonly InterventionAction[];
 
 const INTERVENTION_KINDS = ['help', 'spice', 'sabotage'] as const;
+const BUDGET_STORAGE_KEY = 'the-current.observer-budget.v1';
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -186,6 +187,49 @@ function energyOnDay(
 ): number {
   const elapsedDays = Math.max(0, currentDay - budget.accountedDay);
   return clamp(budget.energy + elapsedDays * regenerationPerDay, 0, capacity);
+}
+
+function loadStoredBudget(
+  currentDay: number,
+  initialEnergy: number,
+  capacity: number,
+): BudgetState {
+  const fallback: BudgetState = {
+    energy: clamp(initialEnergy, 0, capacity),
+    accountedDay: currentDay,
+    cooldownUntil: {},
+  };
+  try {
+    const value: unknown = JSON.parse(globalThis.localStorage?.getItem(BUDGET_STORAGE_KEY) ?? 'null');
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return fallback;
+    const candidate = value as Record<string, unknown>;
+    if (
+      typeof candidate.energy !== 'number'
+      || !Number.isFinite(candidate.energy)
+      || typeof candidate.accountedDay !== 'number'
+      || !Number.isSafeInteger(candidate.accountedDay)
+      || candidate.accountedDay < 0
+      || typeof candidate.cooldownUntil !== 'object'
+      || candidate.cooldownUntil === null
+      || Array.isArray(candidate.cooldownUntil)
+    ) {
+      return fallback;
+    }
+    const cooldownUntil: Partial<Record<InterventionActionId, number>> = {};
+    for (const action of INTERVENTION_ACTIONS) {
+      const day = (candidate.cooldownUntil as Record<string, unknown>)[action.id];
+      if (typeof day === 'number' && Number.isSafeInteger(day) && day >= 0) {
+        cooldownUntil[action.id] = day;
+      }
+    }
+    return {
+      energy: clamp(candidate.energy, 0, capacity),
+      accountedDay: Math.min(candidate.accountedDay, currentDay),
+      cooldownUntil,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function createInterventionId(actionId: InterventionActionId, currentDay: number): string {
@@ -208,16 +252,22 @@ export function ObserverInterventions({
   const noteId = `${componentId}-note`;
   const capacity = Math.max(1, energyCapacity);
   const regenerationPerDay = Math.max(0, energyRegenerationPerDay);
-  const [budget, setBudget] = useState<BudgetState>(() => ({
-    energy: clamp(initialEnergy, 0, capacity),
-    accountedDay: currentDay,
-    cooldownUntil: {},
-  }));
+  const [budget, setBudget] = useState<BudgetState>(() =>
+    loadStoredBudget(currentDay, initialEnergy, capacity),
+  );
   const [note, setNote] = useState('');
   const [pendingActionId, setPendingActionId] = useState<InterventionActionId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const availableEnergy = energyOnDay(budget, currentDay, capacity, regenerationPerDay);
+
+  useEffect(() => {
+    try {
+      globalThis.localStorage?.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budget));
+    } catch {
+      // Storage can be unavailable; the mounted component still enforces the budget.
+    }
+  }, [budget]);
 
   async function submitAction(action: InterventionAction): Promise<void> {
     const cooldownUntil = budget.cooldownUntil[action.id] ?? 0;
