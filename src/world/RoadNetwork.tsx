@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { BufferGeometry, Float32BufferAttribute, Vector3 } from 'three';
 
-import type { BuildingProjection } from '../simulation';
+import { MAIN_ROADS, type BuildingProjection } from '../simulation';
 import { terrainHeight } from './terrain';
 
 interface RoadNetworkProps {
@@ -52,42 +52,27 @@ function ribbonGeometry(points: RoadPoint[], halfWidth: number): BufferGeometry 
 
 export function RoadNetwork({ buildings }: RoadNetworkProps) {
   const geometries = useMemo(() => {
-    const roads: RoadPoint[][] = [
-      [
-        { x: -128, z: 18 },
-        { x: -105, z: 18 },
-        { x: -74, z: 12 },
-        { x: -42, z: 3 },
-        { x: -8, z: 0 },
-        { x: 32, z: 4 },
-        { x: 68, z: 15 },
-      ],
-      [
-        { x: -8, z: -55 },
-        { x: -5, z: -30 },
-        { x: -8, z: 0 },
-        { x: -2, z: 28 },
-        { x: 18, z: 58 },
-      ],
-      [
-        { x: -44, z: -18 },
-        { x: -18, z: -12 },
-        { x: 12, z: -13 },
-        { x: 42, z: -22 },
-      ],
-    ];
+    // The main road corridors are authoritative simulation data: vehicles
+    // drive exactly on them and building placement keeps clear of them.
+    const roads: { points: RoadPoint[]; halfWidth: number }[] = MAIN_ROADS.map((road) => ({
+      points: road.points.map((point) => ({ x: point.x, z: point.z })),
+      halfWidth: road.halfWidth,
+    }));
 
     for (const building of buildings) {
       if (building.type === 'road') continue;
       const distanceToMain = Math.abs(building.position.z);
       if (distanceToMain > 6) {
-        roads.push([
-          { x: building.position.x, z: 0 },
-          { x: building.position.x, z: building.position.z },
-        ]);
+        roads.push({
+          points: [
+            { x: building.position.x, z: 0 },
+            { x: building.position.x, z: building.position.z },
+          ],
+          halfWidth: 1.1,
+        });
       }
     }
-    return roads.map((road, index) => ribbonGeometry(road, index === 0 ? 2.45 : 1.65));
+    return roads.map((road) => ribbonGeometry(road.points, road.halfWidth));
   }, [buildings]);
 
   return (

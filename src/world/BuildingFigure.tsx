@@ -2,7 +2,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useMemo } from 'react';
 import { Color, DoubleSide } from 'three';
 
-import type { BuildingProjection, BuildingType, ConstructionStage } from '../simulation';
+import { BUILDING_FOOTPRINTS, type BuildingProjection, type BuildingType, type ConstructionStage } from '../simulation';
 import { createBuildingWallShell } from './buildingShell';
 import { deterministicUnit, terrainHeight } from './terrain';
 
@@ -32,19 +32,40 @@ const STAGE_RANK: Record<ConstructionStage, number> = {
   complete: 8,
 };
 
-const STYLES: Record<BuildingType, BuildingStyle> = {
-  clinic: { width: 11, depth: 8, wallHeight: 4.2, wall: '#d8ddd3', roof: '#55736f' },
-  'council-hall': { width: 14, depth: 10, wallHeight: 5.1, wall: '#c9b889', roof: '#405760' },
-  farm: { width: 15, depth: 11, wallHeight: 1, wall: '#8f6f3f', roof: '#89724b' },
-  house: { width: 7.2, depth: 8.2, wallHeight: 3.6, wall: '#d5c39d', roof: '#7b4e3c' },
-  market: { width: 12, depth: 9, wallHeight: 3.7, wall: '#c28b5a', roof: '#8b5d4d' },
-  'power-station': { width: 13, depth: 9, wallHeight: 5, wall: '#788984', roof: '#3b4d50' },
-  road: { width: 8, depth: 4, wallHeight: 0.2, wall: '#5e5e58', roof: '#5e5e58' },
-  school: { width: 13, depth: 9, wallHeight: 4.5, wall: '#c7a86d', roof: '#536d67' },
-  warehouse: { width: 14, depth: 10, wallHeight: 5.5, wall: '#9a8d72', roof: '#535b59' },
-  well: { width: 4, depth: 4, wallHeight: 2.8, wall: '#8e8878', roof: '#6b4d39' },
-  workshop: { width: 11, depth: 8, wallHeight: 4.3, wall: '#a88d6d', roof: '#4f5b59' },
+interface BuildingPalette {
+  wallHeight: number;
+  wall: string;
+  roof: string;
+}
+
+const PALETTES: Record<BuildingType, BuildingPalette> = {
+  clinic: { wallHeight: 4.2, wall: '#d8ddd3', roof: '#55736f' },
+  'council-hall': { wallHeight: 5.1, wall: '#c9b889', roof: '#405760' },
+  farm: { wallHeight: 1, wall: '#8f6f3f', roof: '#89724b' },
+  house: { wallHeight: 3.6, wall: '#d5c39d', roof: '#7b4e3c' },
+  market: { wallHeight: 3.7, wall: '#c28b5a', roof: '#8b5d4d' },
+  'power-station': { wallHeight: 5, wall: '#788984', roof: '#3b4d50' },
+  road: { wallHeight: 0.2, wall: '#5e5e58', roof: '#5e5e58' },
+  school: { wallHeight: 4.5, wall: '#c7a86d', roof: '#536d67' },
+  warehouse: { wallHeight: 5.5, wall: '#9a8d72', roof: '#535b59' },
+  well: { wallHeight: 2.8, wall: '#8e8878', roof: '#6b4d39' },
+  workshop: { wallHeight: 4.3, wall: '#a88d6d', roof: '#4f5b59' },
 };
+
+/**
+ * Rendered dimensions come from the simulation's authoritative footprint
+ * table, so what the placement rules enforce is exactly what viewers see.
+ */
+const STYLES: Record<BuildingType, BuildingStyle> = Object.fromEntries(
+  (Object.keys(PALETTES) as BuildingType[]).map((type) => [
+    type,
+    {
+      width: BUILDING_FOOTPRINTS[type].width,
+      depth: BUILDING_FOOTPRINTS[type].depth,
+      ...PALETTES[type],
+    },
+  ]),
+) as Record<BuildingType, BuildingStyle>;
 
 function renderStakes(width: number, depth: number) {
   const corners = [

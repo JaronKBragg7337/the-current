@@ -1,5 +1,6 @@
 import { canonicalDigest, canonicalStringify, cloneSerializable } from './canonical';
 import { resolveSimulationConfig } from './config';
+import { findBuildingSite, resolveNearValidSite, resolveTravelerPosition, type PlacementObstacle } from './placement';
 import { DeterministicRng, deterministicStream } from './rng';
 import {
   SIMULATION_ENGINE_VERSION,
@@ -746,8 +747,15 @@ export class CurrentSimulation {
       { type: 'council-hall', x: 18, z: -7 },
       { type: 'road', x: 0, z: -4 },
     ];
+    const placedObstacles: PlacementObstacle[] = [];
     for (const definition of initialBuildings) {
-      this.createBuilding(definition.type, { x: definition.x, y: 0, z: definition.z }, true, null);
+      const position = definition.type === 'road'
+        ? { x: definition.x, y: 0, z: definition.z }
+        : resolveNearValidSite(definition.type, definition, placedObstacles);
+      this.createBuilding(definition.type, position, true, null);
+      if (definition.type !== 'road') {
+        placedObstacles.push({ type: definition.type, position: { x: position.x, z: position.z } });
+      }
     }
     const council = this.createInstitution('council', 'Confluence Civic Council', []);
     this.stateValue.settlement.institutionIds.push(council.id);
@@ -1637,7 +1645,8 @@ export class CurrentSimulation {
     else if (alive >= 80 && this.completeBuildings().filter((building) => building.type === 'power-station').length < 1 && !queuedTypes.has('power-station')) type = 'power-station';
     if (type === null) return;
     const local = deterministicStream(this.seed, 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
-    const position = { x: local.int(-58, 58), y: 0, z: local.int(-48, 52) };
+    const position = findBuildingSite(local, type, Object.values(this.stateValue.buildings));
+    if (position === null) return;
     const commissioner = this.primaryInstitution()?.id ?? null;
     const building = this.createBuilding(type, position, false, commissioner);
     this.emit('construction-proposed', [building.id], `${building.name} was commissioned in response to ${type === 'house' ? 'housing demand' : `${type} capacity pressure`}.`, {
@@ -1765,7 +1774,13 @@ export class CurrentSimulation {
         .filter((candidate) => candidate.id !== member.id)
         .map((candidate) => ({ candidate, score: this.followScore(member, candidate, institution) }))
         .sort((left, right) => right.score - left.score || left.candidate.id.localeCompare(right.candidate.id))[0];
-      if (choice === undefined || choice.score < this.stateValue.config.leadership.followerTrust) continue;
+      // "Lack of alternatives" is a real follow reason: a leaderless
+      // institution lowers the bar people apply to imperfect candidates,
+      // which lets a settlement of strangers rebuild leadership after a
+      // founding generation dies out.
+      const trustThreshold = this.stateValue.config.leadership.followerTrust -
+        (institution.leaderId === null ? 10 : 0);
+      if (choice === undefined || choice.score < trustThreshold) continue;
       institution.followerCandidateIds[member.id] = choice.candidate.id;
       institution.followerLoyalty[member.id] = round(choice.score);
       const record = support.get(choice.candidate.id) ?? { count: 0, loyalty: 0 };
@@ -1839,7 +1854,16 @@ export class CurrentSimulation {
 
   private followScore(follower: Person, candidate: Person, institution: Institution): number {
     const relationship = this.stateValue.relationships[relationshipId(follower.id, candidate.id)];
-    const trust = relationship?.trust ?? 32;
+    // People who never met a candidate personally can still follow them by
+    // reputation: visible influence and past significance substitute for
+    // first-hand trust once a settlement outgrows personal acquaintance.
+    const reputation = clamp(
+      24 + candidate.influence.social * 0.35 + candidate.influence.political * 0.3 +
+      Math.min(20, candidate.historicalSignificance * 0.5),
+      0,
+      72,
+    );
+    const trust = relationship?.trust ?? reputation;
     const sharedBelief = 100 - Math.abs(follower.traits.politicalDrive - candidate.traits.politicalDrive);
     const materialBenefit = follower.employerId === institution.id ? 12 : 0;
     const fear = candidate.traits.desireForControl * follower.traits.riskTolerance / 500;
@@ -2026,6 +2050,9 @@ export class CurrentSimulation {
   }
 
   private updateMovement(): void {
+    const obstacles: PlacementObstacle[] = Object.values(this.stateValue.buildings)
+      .filter((building) => building.type !== 'road')
+      .map((building) => ({ type: building.type, position: { x: building.position.x, z: building.position.z } }));
     for (const person of this.alivePeople()) {
       const dx = person.destination.x - person.position.x;
       const dz = person.destination.z - person.position.z;
@@ -2034,8 +2061,16 @@ export class CurrentSimulation {
       const healthFactor = 0.45 + person.health / 180;
       const step = Math.min(distance, DAILY_TRAVEL_METERS * ageFactor * healthFactor);
       if (distance > 0.0001) {
-        person.position.x = round(person.position.x + dx / distance * step);
-        person.position.z = round(person.position.z + dz / distance * step);
+        const stepped = resolveTravelerPosition(
+          {
+            x: person.position.x + dx / distance * step,
+            z: person.position.z + dz / distance * step,
+          },
+          person.destination,
+          obstacles,
+        );
+        person.position.x = round(stepped.x);
+        person.position.z = round(stepped.z);
         person.yaw = round(Math.atan2(dx, dz));
       }
     }

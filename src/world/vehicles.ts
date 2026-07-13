@@ -1,44 +1,47 @@
 import type { VehicleProjection } from '../app/types';
-import type { WorldProjection } from '../simulation';
+import { MAIN_ROADS, type RoadPath, type WorldProjection } from '../simulation';
 import { terrainHeight } from './terrain';
 
 export interface VehicleRoute {
   id: string;
   points: ReadonlyArray<{ x: number; z: number }>;
 }
-export const VEHICLE_ROUTES: readonly VehicleRoute[] = [
-  {
-    id: 'west-market',
-    points: [
-      { x: -112, z: 18 },
-      { x: -74, z: 12 },
-      { x: -38, z: 3 },
-      { x: 2, z: 0 },
-      { x: 44, z: 9 },
-    ],
-  },
-  {
-    id: 'farm-warehouse',
-    points: [
-      { x: -8, z: -52 },
-      { x: -6, z: -24 },
-      { x: -8, z: 0 },
-      { x: -1, z: 26 },
-      { x: 17, z: 55 },
-    ],
-  },
-  {
-    id: 'workshop-loop',
-    points: [
-      { x: -44, z: -18 },
-      { x: -12, z: -12 },
-      { x: 20, z: -14 },
-      { x: 42, z: -22 },
-      { x: 14, z: -13 },
-      { x: -20, z: -13 },
-    ],
-  },
-] as const;
+
+/**
+ * Offset a road centerline sideways so vehicles drive in a lane on the road
+ * surface instead of down the exact centerline. A positive offset is the
+ * right-hand lane in the direction of travel; a negative offset drives the
+ * opposite lane.
+ */
+function laneOffsetPolyline(road: RoadPath, offset: number): { x: number; z: number }[] {
+  return road.points.map((point, index) => {
+    const previous = road.points[Math.max(0, index - 1)] ?? point;
+    const next = road.points[Math.min(road.points.length - 1, index + 1)] ?? point;
+    const dx = next.x - previous.x;
+    const dz = next.z - previous.z;
+    const length = Math.hypot(dx, dz) || 1;
+    return {
+      x: point.x + (-dz / length) * offset,
+      z: point.z + (dx / length) * offset,
+    };
+  });
+}
+
+/**
+ * Vehicle routes are derived directly from the authoritative road network.
+ * Each road contributes two lanes (one per direction), so carts on the same
+ * road never share a lane, and because building placement keeps footprints
+ * clear of road corridors, vehicles cannot pass through structures.
+ */
+export const VEHICLE_ROUTES: readonly VehicleRoute[] = MAIN_ROADS.flatMap((road) => {
+  const lane = Math.max(0.7, road.halfWidth - 1.15);
+  const forward = laneOffsetPolyline(road, lane);
+  const reverse = laneOffsetPolyline(road, -lane).slice().reverse();
+  return [
+    { id: `${road.id}:east`, points: forward },
+    { id: `${road.id}:west`, points: reverse },
+  ];
+});
 
 export function positionOnRoute(route: VehicleRoute, progress: number) {
   const segmentCount = route.points.length - 1;
