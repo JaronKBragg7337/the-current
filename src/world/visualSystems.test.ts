@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import type { BuildingProjection, PersonProjection } from '../simulation';
+import { personInsideBuilding, spreadCoLocatedPeople } from './crowdLayout';
 import { createRoadRibbonGeometry } from './roadGeometry';
 import { resourceTier } from './visualProjection';
 
@@ -16,5 +18,47 @@ describe('visual projection systems', () => {
       expect(normal?.getY(index)).toBeGreaterThan(0.99);
     }
     geometry.dispose();
+  });
+});
+
+describe('crowd visual projection', () => {
+  const person = (id: string): PersonProjection => ({
+    id: id as PersonProjection['id'],
+    name: id,
+    position: { x: 16, y: 0, z: 12 },
+    destination: { x: 16, y: 0, z: 12 },
+    yaw: 0,
+    heightMeters: 1.72,
+    lifeStage: 'adult',
+    biologicalSex: 'female',
+    occupation: 'trader',
+    task: 'trade',
+    health: 100,
+    emotion: 0,
+    householdId: null,
+    homeBuildingId: null,
+    partnerId: null,
+    decisionReason: '',
+    rareEvidence: 0,
+  });
+  const market: BuildingProjection = {
+    id: 'building:market' as BuildingProjection['id'],
+    name: 'Market',
+    type: 'market',
+    position: { x: 16, y: 0, z: 12 },
+    stage: 'complete',
+    progress: 1,
+    capacity: 12,
+    condition: 100,
+    occupied: 3,
+  };
+
+  it('spreads co-located people deterministically inside a workplace footprint', () => {
+    const people = [person('person:1'), person('person:2'), person('person:3')];
+    const first = spreadCoLocatedPeople(people, [market]);
+    const second = spreadCoLocatedPeople(people, [market]);
+    expect(first.map((entry) => entry.position)).toEqual(second.map((entry) => entry.position));
+    expect(new Set(first.map((entry) => `${entry.position.x}:${entry.position.z}`)).size).toBe(3);
+    expect(first.every((entry) => personInsideBuilding(entry, market))).toBe(true);
   });
 });

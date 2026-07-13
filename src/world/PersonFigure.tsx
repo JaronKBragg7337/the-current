@@ -129,7 +129,9 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
     const root = rootRef.current;
     if (root === null) return;
     target.set(person.position.x, groundHeight, person.position.z);
-    root.visible = shouldRenderDetailedPerson(camera.position.distanceToSquared(target), selected, firstPersonSelf);
+    const distanceToCamera = camera.position.distanceToSquared(target);
+    const cameraPersonalSpace = !selected && cameraMode !== 'orbital' && distanceToCamera < 1.45 ** 2;
+    root.visible = !cameraPersonalSpace && shouldRenderDetailedPerson(distanceToCamera, selected, firstPersonSelf);
     if (!root.visible) return;
 
     root.position.x = MathUtils.damp(root.position.x, target.x, 4.5, delta);
