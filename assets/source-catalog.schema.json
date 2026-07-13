@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.heartbeatobservatory.com/schemas/the-current/asset-source-catalog-v1.schema.json",
+  "title": "The Current external asset research catalog",
+  "description": "Research candidates only. A source must move to manifest.json before any derivative is committed or loaded at runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "catalogVersion", "lastReviewedAt", "statusStatement", "sources"],
+  "properties": {
+    "$schema": { "const": "./source-catalog.schema.json" },
+    "catalogVersion": { "const": 1 },
+    "lastReviewedAt": { "$ref": "#/$defs/date" },
+    "statusStatement": { "type": "string", "minLength": 1 },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "httpsUrl": { "type": "string", "pattern": "^https://" },
+    "nullableSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "strings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spdxId", "proofUrl", "scopeNotes"],
+      "properties": {
+        "spdxId": { "type": "string", "minLength": 1 },
+        "proofUrl": { "$ref": "#/$defs/httpsUrl" },
+        "scopeNotes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "name", "creator", "categories", "disposition", "status", "incorporated",
+        "homepageUrl", "acquisitionUrl", "license", "formats", "listedArchiveSize", "proposedUse",
+        "compatibilityNotes", "constraints", "downloadedAt", "archiveSha256", "runtimeFiles"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "creator": { "type": "string", "minLength": 1 },
+        "categories": { "$ref": "#/$defs/strings" },
+        "disposition": { "enum": ["preferred", "supplemental", "future-evaluation"] },
+        "status": { "const": "candidate-not-downloaded" },
+        "incorporated": { "const": false },
+        "homepageUrl": { "$ref": "#/$defs/httpsUrl" },
+        "acquisitionUrl": { "$ref": "#/$defs/httpsUrl" },
+        "license": { "$ref": "#/$defs/license" },
+        "formats": { "$ref": "#/$defs/strings" },
+        "listedArchiveSize": { "type": ["string", "null"] },
+        "proposedUse": { "type": "string", "minLength": 1 },
+        "compatibilityNotes": { "type": "string", "minLength": 1 },
+        "constraints": { "$ref": "#/$defs/strings" },
+        "downloadedAt": { "const": null },
+        "archiveSha256": { "const": null },
+        "runtimeFiles": { "type": "array", "maxItems": 0 }
+      }
+    }
+  }
+}

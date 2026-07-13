@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.heartbeatobservatory.com/schemas/the-current/asset-manifest-v1.schema.json",
+  "title": "The Current incorporated external asset manifest",
+  "description": "Describes only external assets that are actually redistributed or loaded at runtime. Research candidates belong in source-catalog.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "lastReviewedAt",
+    "canonicalConventions",
+    "approvedRuntimeLicenses",
+    "externalAssets"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "./manifest.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "lastReviewedAt": {
+      "$ref": "#/$defs/date"
+    },
+    "canonicalConventions": {
+      "$ref": "#/$defs/projectConventions"
+    },
+    "approvedRuntimeLicenses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "externalAssets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/externalAsset"
+      }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "repoRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z]:)(?!.*\\\\).+$"
+    },
+    "nonEmptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "projectConventions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "linearUnit",
+        "metersPerUnit",
+        "upAxis",
+        "forwardAxis",
+        "characterRoot",
+        "materialPolicy",
+        "animationPolicy"
+      ],
+      "properties": {
+        "linearUnit": {
+          "const": "meter"
+        },
+        "metersPerUnit": {
+          "const": 1
+        },
+        "upAxis": {
+          "const": "+Y"
+        },
+        "forwardAxis": {
+          "const": "-Z"
+        },
+        "characterRoot": {
+          "const": "ground-between-feet"
+        },
+        "materialPolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "animationPolicy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "homepageUrl",
+        "downloadUrl"
+      ],
+      "properties": {
+        "homepageUrl": {
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "downloadUrl": {
+          "$ref": "#/$defs/httpsUrl"
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spdxId",
+        "name",
+        "proofUrl",
+        "localEvidenceFile",
+        "attributionRequired",
+        "redistributionAllowed",
+        "restrictions"
+      ],
+      "properties": {
+        "spdxId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proofUrl": {
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "localEvidenceFile": {
+          "$ref": "#/$defs/repoRelativePath"
+        },
+        "attributionRequired": {
+          "type": "boolean"
+        },
+        "redistributionAllowed": {
+          "const": true
+        },
+        "restrictions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "downloadedAt",
+        "archiveFilename",
+        "archiveSha256",
+        "archiveBytes",
+        "localCachePath"
+      ],
+      "properties": {
+        "downloadedAt": {
+          "$ref": "#/$defs/date"
+        },
+        "archiveFilename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archiveSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "archiveBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "localCachePath": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/repoRelativePath"
+            },
+            {
+              "pattern": "^assets/source-cache/"
+            }
+          ]
+        }
+      }
+    },
+    "canonicalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metersPerUnit",
+        "upAxis",
+        "forwardAxis",
+        "rootPlacement",
+        "materialStrategy",
+        "collisionStrategy",
+        "lodStrategy"
+      ],
+      "properties": {
+        "metersPerUnit": {
+          "const": 1
+        },
+        "upAxis": {
+          "const": "+Y"
+        },
+        "forwardAxis": {
+          "const": "-Z"
+        },
+        "rootPlacement": {
+          "enum": [
+            "ground-between-feet",
+            "object-origin",
+            "not-applicable"
+          ]
+        },
+        "materialStrategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "collisionStrategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lodStrategy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runtimeFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "bytes",
+        "role"
+      ],
+      "properties": {
+        "path": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/repoRelativePath"
+            },
+            {
+              "pattern": "^assets/runtime/"
+            }
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "role": {
+          "enum": [
+            "model",
+            "animation",
+            "texture",
+            "audio",
+            "collision",
+            "metadata",
+            "other"
+          ]
+        }
+      }
+    },
+    "toolVersions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "externalAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "creator",
+        "source",
+        "license",
+        "acquisition",
+        "selectedSourceFiles",
+        "modifications",
+        "canonicalization",
+        "runtimeFiles",
+        "toolVersions",
+        "attributionText",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "creator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "license": {
+          "$ref": "#/$defs/license"
+        },
+        "acquisition": {
+          "$ref": "#/$defs/acquisition"
+        },
+        "selectedSourceFiles": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "modifications": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "canonicalization": {
+          "$ref": "#/$defs/canonicalization"
+        },
+        "runtimeFiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/runtimeFile"
+          }
+        },
+        "toolVersions": {
+          "$ref": "#/$defs/toolVersions"
+        },
+        "attributionText": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

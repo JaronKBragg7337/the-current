@@ -1,0 +1,23 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": 1,
+  "lastReviewedAt": "2026-07-13",
+  "canonicalConventions": {
+    "linearUnit": "meter",
+    "metersPerUnit": 1,
+    "upAxis": "+Y",
+    "forwardAxis": "-Z",
+    "characterRoot": "ground-between-feet",
+    "materialPolicy": "Shared and atlased materials are preferred; unique materials require a measured visual reason.",
+    "animationPolicy": "The simulation owns movement; runtime locomotion clips are in-place unless a documented cinematic explicitly uses root motion."
+  },
+  "approvedRuntimeLicenses": [
+    "CC0-1.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "CC-BY-4.0"
+  ],
+  "externalAssets": []
+}
