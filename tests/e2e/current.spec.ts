@@ -28,13 +28,6 @@ async function activateVisibleButton(
   await button.evaluate((element) => (element as HTMLButtonElement).click());
 }
 
-async function expectNativeHidden(panel: Locator): Promise<void> {
-  await expect.poll(
-    async () => panel.evaluate((element) => (element as HTMLElement).hidden),
-    { timeout: 10_000 },
-  ).toBe(true);
-}
-
 test('loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -95,15 +88,14 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   await activateVisibleButton(page.getByRole('button', { name: 'Close history' }));
   await expect(historyPanel).toHaveCount(0);
 
-  const influenceToggle = page.getByRole('button', { name: 'Influence', exact: true });
-  await influenceToggle.click();
+  await page.getByRole('button', { name: 'Influence', exact: true }).click();
   const interventionPanel = page.getByRole('complementary', { name: 'Observer interventions' });
   await expect(interventionPanel).toBeVisible();
   await expect(page.getByRole('button', { name: 'Close interventions' })).toBeVisible();
-  // Mounted side panels share one stable state path with their top-bar toggle.
-  // Use that path to verify closure without a flaky floating-control event.
-  await influenceToggle.click();
-  await expectNativeHidden(page.locator('aside.intervention-panel'));
+  // Escape is the application's documented keyboard-accessible route for
+  // closing all open panels and avoids SwiftShader pointer timing entirely.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('aside.intervention-panel')).toHaveAttribute('hidden', '');
 
   await page.getByRole('button', { name: 'System', exact: true }).click();
   const diagnosticsPanel = page.getByRole('complementary', {
@@ -131,8 +123,7 @@ test('bundled external signals load without third-party requests and enter histo
     new URL(response.url()).pathname.endsWith('/data/signals.v1.json'),
   );
   await enterWorld(page);
-  const signalsToggle = page.getByRole('button', { name: 'Signals', exact: true });
-  await signalsToggle.click();
+  await page.getByRole('button', { name: 'Signals', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'External signals' })).toBeVisible();
   expect((await fixtureResponse).status()).toBe(200);
 
@@ -149,8 +140,8 @@ test('bundled external signals load without third-party requests and enter histo
   const persistedInputs = await readPersistedExternalInputs(page);
   expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
   await expect(page.getByRole('button', { name: 'Close outside signals' })).toBeVisible();
-  await signalsToggle.click();
-  await expectNativeHidden(page.locator('aside.signals-panel'));
+  await page.keyboard.press('Escape');
+  await expect(page.locator('aside.signals-panel')).toHaveAttribute('hidden', '');
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText('signal received', { exact: true })).toBeVisible();
   expect(thirdPartyRequests).toEqual([]);
