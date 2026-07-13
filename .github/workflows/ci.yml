@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  pages: read
 
 jobs:
   quality:
@@ -43,8 +44,23 @@ jobs:
       - name: Run unit and deterministic tests
         run: npm test
 
+      - name: Validate asset and dependency provenance
+        run: |
+          npm run assets:validate
+          npm run licenses:validate
+
       - name: Build production application
         run: npm run build
+
+      - name: Build and verify the future Heartbeat Observatory base path
+        run: |
+          npm run build:heartbeat
+          npm run build:heartbeat:verify
+
+      - name: Build and verify the GitHub Pages base path
+        run: |
+          npm run build:github
+          npm run build:github:verify
 
       - name: Run 150-day headless simulation
         run: npm run sim:150
@@ -56,6 +72,16 @@ jobs:
           path: benchmarks/results/simulation-150d.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Configure GitHub Pages
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        uses: actions/configure-pages@v6
+
+      - name: Preserve verified GitHub Pages build
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
 
   browser:
     name: Desktop and mobile Chromium
@@ -94,3 +120,20 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 30
+
+  pages:
+    name: Publish verified GitHub Pages build
+    needs: [quality, browser]
+    if: ${{ success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

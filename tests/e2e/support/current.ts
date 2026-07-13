@@ -26,9 +26,12 @@ export interface CurrentDiagnostics {
 }
 
 interface IndexedDbEvidence {
-  externalInputs: Array<{ kind: string }>;
   snapshotCount: number;
   worldCount: number;
+}
+
+interface PersistedExternalInput {
+  kind: string;
 }
 
 type CurrentWindow = Window & {
@@ -71,19 +74,25 @@ export async function waitForRenderedWorld(page: Page): Promise<CurrentDiagnosti
 }
 
 export async function enterWorld(page: Page, pause = true): Promise<CurrentDiagnostics> {
-  await page.goto('/');
+  // Relative navigation preserves a configured deployment subpath. An
+  // absolute slash would silently test the origin root instead.
+  await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Witness the current.' })).toBeVisible();
   await expect(page.locator('.world-canvas canvas')).toBeVisible();
+  // Let the initial, paused worker finish before the welcome action starts time.
+  // Otherwise a software-rendered browser can advance many days before the
+  // harness gets enough main-thread time to click Pause.
+  await waitForReadyWorld(page);
   await page.getByRole('button', { name: /Enter as witness/ }).click();
   await expect(page.getByRole('heading', { name: 'Witness the current.' })).toBeHidden();
-  const diagnostics = await waitForReadyWorld(page);
   if (pause) await pauseWorld(page);
-  return diagnostics;
+  return getDiagnostics(page);
 }
 
 export async function pauseWorld(page: Page): Promise<void> {
   const pauseButton = page.getByRole('button', { name: 'Pause time' });
   const resumeButton = page.getByRole('button', { name: 'Resume time' });
+  if (await resumeButton.isVisible()) return;
   await expect(pauseButton).toBeVisible();
   await pauseButton.click();
   await expect(resumeButton).toBeVisible();
@@ -104,10 +113,41 @@ export async function advanceOneDay(page: Page): Promise<CurrentDiagnostics> {
 }
 
 export async function ensureSaved(page: Page): Promise<CurrentDiagnostics> {
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.waitForFunction(
-    () => (window as CurrentWindow).__CURRENT_DIAGNOSTICS__?.saveStatus === 'saved',
-  );
+  const expected = await getDiagnostics(page);
+  const saveButton = page.getByRole('button', { name: 'Save', exact: true });
+  await saveButton.click();
+
+  // The saving label can exist for less than one polling interval on a fast
+  // IndexedDB implementation. Verify the durable world pointer instead of a
+  // transient UI state.
+  await expect.poll(
+    () => page.evaluate(async ({ day, digest }) => {
+      function resultOf<T>(request: IDBRequest<T>): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+          request.addEventListener('success', () => resolve(request.result), { once: true });
+          request.addEventListener(
+            'error',
+            () => reject(request.error ?? new Error('IndexedDB request failed')),
+            { once: true },
+          );
+        });
+      }
+
+      const database = await resultOf(indexedDB.open('heartbeat-observatory.the-current', 1));
+      try {
+        const transaction = database.transaction('worlds', 'readonly');
+        const worlds = await resultOf(transaction.objectStore('worlds').getAll()) as Array<{
+          latestDay?: unknown;
+          latestDigest?: unknown;
+        }>;
+        return worlds.some((world) => world.latestDay === day && world.latestDigest === digest);
+      } finally {
+        database.close();
+      }
+    }, { day: expected.day, digest: expected.digest }),
+    { message: 'saved world metadata should match the requested deterministic state' },
+  ).toBe(true);
+
   return getDiagnostics(page);
 }
 
@@ -177,18 +217,90 @@ export async function readIndexedDbEvidence(page: Page): Promise<IndexedDbEviden
       });
     }
 
-    const database = await resultOf(indexedDB.open('heartbeat-observatory.the-current'));
+    function completionOf(transaction: IDBTransaction): Promise<void> {
+      return new Promise<void>((resolve, reject) => {
+        transaction.addEventListener('complete', () => resolve(), { once: true });
+        transaction.addEventListener(
+          'abort',
+          () => reject(transaction.error ?? new Error('IndexedDB transaction aborted')),
+          { once: true },
+        );
+        transaction.addEventListener(
+          'error',
+          () => reject(transaction.error ?? new Error('IndexedDB transaction failed')),
+          { once: true },
+        );
+      });
+    }
+
+    const database = await resultOf(indexedDB.open('heartbeat-observatory.the-current', 1));
     try {
       const transaction = database.transaction(
-        ['worlds', 'snapshots', 'external-inputs'],
+        ['worlds', 'snapshots'],
         'readonly',
       );
+      const completed = completionOf(transaction);
       const worldCount = await resultOf(transaction.objectStore('worlds').count());
       const snapshotCount = await resultOf(transaction.objectStore('snapshots').count());
-      const externalInputs = await resultOf(
-        transaction.objectStore('external-inputs').getAll(),
-      ) as Array<{ kind: string }>;
-      return { externalInputs, snapshotCount, worldCount };
+      await completed;
+      return { snapshotCount, worldCount };
+    } finally {
+      database.close();
+    }
+  });
+}
+
+export async function readPersistedExternalInputs(
+  page: Page,
+): Promise<PersistedExternalInput[]> {
+  return page.evaluate(async () => {
+    function resultOf<T>(request: IDBRequest<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        request.addEventListener('success', () => resolve(request.result), { once: true });
+        request.addEventListener(
+          'error',
+          () => reject(request.error ?? new Error('IndexedDB request failed')),
+          { once: true },
+        );
+      });
+    }
+
+    const database = await resultOf(indexedDB.open('heartbeat-observatory.the-current', 1));
+    try {
+      const transaction = database.transaction('external-inputs', 'readonly');
+      return await resultOf(transaction.objectStore('external-inputs').getAll()) as Array<{
+        kind: string;
+      }>;
+    } finally {
+      database.close();
+    }
+  });
+}
+
+export async function readPersistedEventTypes(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    function resultOf<T>(request: IDBRequest<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        request.addEventListener('success', () => resolve(request.result), { once: true });
+        request.addEventListener(
+          'error',
+          () => reject(request.error ?? new Error('IndexedDB request failed')),
+          { once: true },
+        );
+      });
+    }
+
+    const database = await resultOf(indexedDB.open('heartbeat-observatory.the-current', 1));
+    try {
+      const transaction = database.transaction('event-chunks', 'readonly');
+      const chunks = await resultOf(transaction.objectStore('event-chunks').getAll()) as Array<{
+        events?: Array<{ type?: string }>;
+      }>;
+      return chunks.flatMap((chunk) =>
+        (chunk.events ?? []).flatMap((event) =>
+          typeof event.type === 'string' ? [event.type] : [],
+        ),
+      );
     } finally {
       database.close();
     }

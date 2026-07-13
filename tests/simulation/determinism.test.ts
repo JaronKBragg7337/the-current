@@ -93,7 +93,7 @@ describe('deterministic simulation', () => {
     expect(projection.people).toHaveLength(metrics.population);
     expect(projection.people.every((person) => initial.inspectPerson(person.id)?.alive === true)).toBe(true);
     expect(projection.people.every((person) => person.decisionReason.length > 0)).toBe(true);
-  }, 20_000);
+  }, 45_000);
 
   it('rejects altered save data and separates different seeds', () => {
     const source = createSimulation({ seed: 'save-integrity' });

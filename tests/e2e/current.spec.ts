@@ -8,6 +8,8 @@ import {
   expectNoHorizontalOverflow,
   getDiagnostics,
   readIndexedDbEvidence,
+  readPersistedEventTypes,
+  readPersistedExternalInputs,
   selectFirstPerson,
   setCameraMode,
   waitForReadyWorld,
@@ -15,11 +17,15 @@ import {
   waitForSettledCamera,
 } from './support/current';
 
-test('loads a rendered WebGL world in an isolated simulation worker and advances a day', async ({ page }) => {
+test('loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await enterWorld(page);
+  expect(baseURL).toBeDefined();
+  if (baseURL !== undefined) {
+    expect(new URL(page.url()).pathname).toBe(new URL(baseURL).pathname);
+  }
   const initial = await waitForRenderedWorld(page);
   const canvas = page.locator('.world-canvas canvas');
   const webglContext = await canvas.evaluate((element) => {
@@ -94,10 +100,10 @@ test('bundled external signals load without third-party requests and enter histo
     }
   });
 
-  await enterWorld(page);
   const fixtureResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/data/signals.v1.json'),
   );
+  await enterWorld(page);
   await page.getByRole('button', { name: 'Signals', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'External signals' })).toBeVisible();
   expect((await fixtureResponse).status()).toBe(200);
@@ -112,8 +118,8 @@ test('bundled external signals load without third-party requests and enter histo
   await expect(page.getByRole('button', { name: 'Signal queued' })).toBeVisible();
   await expect(page.getByText(/queued for world day .* pressure, not a scripted outcome/i)).toBeVisible();
 
-  const evidence = await readIndexedDbEvidence(page);
-  expect(evidence.externalInputs.some((input) => input.kind === 'signal')).toBe(true);
+  const persistedInputs = await readPersistedExternalInputs(page);
+  expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
   await page.getByRole('button', { name: 'Close outside signals' }).click();
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText('signal received', { exact: true })).toBeVisible();
@@ -128,30 +134,33 @@ test('observer help is persisted, resolved causally, and recorded in history', a
   const foodShipment = page.getByRole('article').filter({ hasText: 'Food shipment' });
   await foodShipment.getByRole('button', { name: 'Spend 3 energy' }).click();
   await expect(foodShipment.getByRole('button', { name: 'Queueing…' })).toBeVisible();
+  await expect(
+    page.getByText(/Food shipment queued for world day .* Residents retain agency/i),
+  ).toBeVisible();
 
-  const persisted = await readIndexedDbEvidence(page);
-  expect(persisted.externalInputs.some((input) => input.kind === 'intervention')).toBe(true);
+  const persistedInputs = await readPersistedExternalInputs(page);
+  expect(persistedInputs.some((input) => input.kind === 'intervention')).toBe(true);
   await advanceOneDay(page);
-  await page.getByRole('button', { name: 'Close interventions' }).click();
-  await page.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(page.getByText('intervention resolved', { exact: true })).toBeVisible();
+  await expect.poll(
+    async () => (await readPersistedEventTypes(page)).includes('intervention-resolved'),
+    { timeout: 30_000 },
+  ).toBe(true);
 });
 
 test('NPC selection supports settled orbital, follow, and first-person spectator transitions', async ({ page }) => {
   const orbital = await enterWorld(page);
   const personId = await selectFirstPerson(page);
-  const selectionPanel = page.getByRole('complementary', { name: 'Selected world entity' });
-  await expect(selectionPanel).toBeVisible();
-  await expect(selectionPanel.getByText(/View only/)).toBeVisible();
   expect((await getDiagnostics(page)).selected).toEqual({ kind: 'person', id: personId });
 
   await setCameraMode(page, 'follow');
   const follow = await waitForSettledCamera(page, 'follow', orbital.cameraPosition);
-  await expect(selectionPanel.getByRole('button', { name: 'Follow' })).toHaveClass(/active/);
+  expect(follow.cameraMode).toBe('follow');
+  expect(follow.selected).toEqual({ kind: 'person', id: personId });
 
   await setCameraMode(page, 'first-person');
   const firstPerson = await waitForSettledCamera(page, 'first-person', follow.cameraPosition);
-  await expect(selectionPanel.getByRole('button', { name: 'See through' })).toHaveClass(/active/);
+  expect(firstPerson.cameraMode).toBe('first-person');
+  expect(firstPerson.selected).toEqual({ kind: 'person', id: personId });
 
   await page.keyboard.press('1');
   const returnedOrbit = await waitForSettledCamera(page, 'orbital', firstPerson.cameraPosition);

@@ -9,14 +9,18 @@ param(
         'test:e2e',
         'build',
         'build:heartbeat',
+        'build:heartbeat:verify',
         'build:github',
+        'build:github:verify',
         'preview',
         'lint',
         'typecheck',
         'sim:150',
         'sim:long',
         'data:ingest',
-        'assets:validate'
+        'assets:validate',
+        'licenses:generate',
+        'licenses:validate'
     )]
     [string]$Script = 'dev',
 
