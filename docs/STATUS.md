@@ -24,7 +24,7 @@ This is still an early civilization, not the complete master specification. It h
 | Production/base-path builds | verified | Root, `/the-current/`, and `/worlds/the-current/` builds pass; both subpath artifacts pass static reference/fixture validation |
 | Browser automation | verified | Complete serial Playwright invocation: 10 applicable cases passed, 6 project-specific skips; no failures |
 | Mobile/responsive experience | verified | Pixel 7 Chromium covers worker/WebGL boot, camera transitions, and viewport containment; physical-device profiling remains future work |
-| Public preview | unimplemented | Pages workflow exists; no live URL is claimed until a deployment succeeds |
+| Public preview | verified | <https://jaronkbragg7337.github.io/the-current/>; gated quality, desktop, mobile, and Pages jobs passed in [run 29243877756](https://github.com/JaronKBragg7337/the-current/actions/runs/29243877756) |
 
 See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser evidence, and qualifications.
 

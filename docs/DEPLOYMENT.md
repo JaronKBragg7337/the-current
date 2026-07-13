@@ -24,6 +24,8 @@ npm run build:github
 
 This produces a build rooted at `/the-current/`. The committed GitHub Actions workflow publishes the same command when Pages is enabled.
 
+The verified public preview is <https://jaronkbragg7337.github.io/the-current/>. Quality, desktop Chromium, Pixel 7 Chromium, and deployment all passed in [workflow run 29243877756](https://github.com/JaronKBragg7337/the-current/actions/runs/29243877756); a separate post-deploy WebGL smoke also passed against that origin.
+
 ## Persistence and live data
 
 Static hosting retains local IndexedDB saves per origin. A future shared public world needs a separately authenticated synchronization service with server-authoritative event ordering; do not mistake local browser persistence for multi-viewer consensus.

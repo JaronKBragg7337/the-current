@@ -84,9 +84,10 @@ Renderer diagnostics in the automated Chromium environment sampled about 727 cal
 | Current-world data enters causal loop | normalization tests, ingestion probes, browser signal path | no scheduled production collector |
 | Observer intervention retains NPC agency | causal tests and persisted browser intervention | limits are local, not shared authority |
 
-## Checks beyond this local milestone
+## Remote release and next checks
 
-- Deploy through the Pages workflow, verify the `/the-current/` asset base on the live origin, and record the URL only after it responds.
+- The gated GitHub workflow passed quality, desktop Chromium, Pixel 7 Chromium, and Pages publication in [run 29243877756](https://github.com/JaronKBragg7337/the-current/actions/runs/29243877756). The live preview and all six referenced JS/CSS assets returned HTTP 200, and a separate post-deploy Playwright smoke verified module-worker/WebGL boot and exact day advancement at <https://jaronkbragg7337.github.io/the-current/>.
+- Mount or proxy the independently built artifact at `/worlds/the-current/` when Heartbeat Observatory integration is authorized; the route-specific build already passes static reference validation.
 - Profile p50/p95 frame time on representative hardware, not only automated Chromium.
 - Exercise export to disk and import through the visible UI in a clean browser profile; the storage layer itself has automated roundtrip tests.
 - Add an explicit accessibility/keyboard focus audit and real touch-device check.
