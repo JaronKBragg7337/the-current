@@ -87,15 +87,15 @@ export function FarPopulation({ people, selectedPersonId, cameraMode, onSelect }
 
       position.set(transform.x, transform.ground + transform.height * 0.48, transform.z);
       scale.set(
-        visible ? transform.height * 0.19 : 0,
-        visible ? transform.height * 0.32 : 0,
-        visible ? transform.height * 0.19 : 0,
+        visible ? transform.height * 0.13 : 0,
+        visible ? transform.height * 0.22 : 0,
+        visible ? transform.height * 0.11 : 0,
       );
       matrix.compose(position, quaternion, scale);
       bodies.setMatrixAt(index, matrix);
 
       position.set(transform.x, transform.ground + transform.height * 0.84, transform.z);
-      scale.setScalar(visible ? transform.height * 0.145 : 0);
+      scale.setScalar(visible ? transform.height * 0.115 : 0);
       matrix.compose(position, quaternion, scale);
       heads.setMatrixAt(index, matrix);
     });
@@ -121,7 +121,7 @@ export function FarPopulation({ people, selectedPersonId, cameraMode, onSelect }
         onClick={handleSelect}
         castShadow
       >
-        <capsuleGeometry args={[1, 1.5, 3, 6]} />
+        <capsuleGeometry args={[1, 1.2, 3, 6]} />
         <meshStandardMaterial roughness={0.9} />
       </instancedMesh>
       <instancedMesh

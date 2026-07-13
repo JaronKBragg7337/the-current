@@ -5,6 +5,7 @@ import type { Group } from 'three';
 import { MathUtils } from 'three';
 
 import type { VehicleProjection } from '../app/types';
+import { ConfluenceAsset } from './ConfluenceKit';
 import type { VehicleRoute } from './vehicles';
 import { positionOnRoute } from './vehicles';
 
@@ -17,7 +18,6 @@ interface VehicleFigureProps {
 
 export function VehicleFigure({ vehicle, route, selected, onSelect }: VehicleFigureProps) {
   const rootRef = useRef<Group>(null);
-  const wheelRefs = useRef<Array<Group | null>>([]);
   const offset = useMemo(() => vehicle.routeProgress, [vehicle.routeProgress]);
 
   useFrame(({ clock }, delta) => {
@@ -27,12 +27,9 @@ export function VehicleFigure({ vehicle, route, selected, onSelect }: VehicleFig
     const progress = (offset + clock.elapsedTime * speed) % 1;
     const placed = positionOnRoute(route, progress);
     root.position.x = MathUtils.damp(root.position.x, placed.position.x, 8, delta);
-    root.position.y = MathUtils.damp(root.position.y, placed.position.y + 0.5, 8, delta);
+    root.position.y = MathUtils.damp(root.position.y, placed.position.y + 0.13, 8, delta);
     root.position.z = MathUtils.damp(root.position.z, placed.position.z, 8, delta);
-    root.rotation.y = MathUtils.damp(root.rotation.y, placed.yaw, 9, delta);
-    for (const wheel of wheelRefs.current) {
-      if (wheel !== null) wheel.rotation.x -= delta * (vehicle.active ? 4.8 : 0);
-    }
+    root.rotation.y = MathUtils.damp(root.rotation.y, placed.yaw + Math.PI, 9, delta);
   });
 
   const handleSelect = (event: ThreeEvent<MouseEvent>) => {
@@ -44,62 +41,29 @@ export function VehicleFigure({ vehicle, route, selected, onSelect }: VehicleFig
     <group
       ref={rootRef}
       name={`vehicle:${vehicle.id}`}
-      position={[vehicle.position.x, vehicle.position.y + 0.5, vehicle.position.z]}
-      rotation={[0, vehicle.yaw, 0]}
+      position={[vehicle.position.x, vehicle.position.y + 0.13, vehicle.position.z]}
+      rotation={[0, vehicle.yaw + Math.PI, 0]}
       onClick={handleSelect}
       userData={{ entityId: vehicle.id, entityKind: 'vehicle' }}
     >
       {selected && (
-        <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[1.65, 1.83, 36]} />
+        <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[1.45, 1.62, 36]} />
           <meshBasicMaterial color="#f5d97a" transparent opacity={0.9} depthWrite={false} />
         </mesh>
       )}
-      <mesh position={[0, 0.36, 0]} castShadow>
-        <boxGeometry args={[2.35, 0.62, 3.75]} />
-        <meshStandardMaterial color="#576967" roughness={0.78} metalness={0.12} />
+      <ConfluenceAsset name="Asset_CargoCart" scale={0.86} />
+      <mesh position={[-0.68, 1.55, 0.12]} castShadow>
+        <boxGeometry args={[0.46, 0.36, 0.5]} />
+        <meshStandardMaterial color={vehicle.active ? '#bca167' : '#746b5b'} roughness={0.94} />
       </mesh>
-      <mesh position={[0, 1.13, 0.82]} castShadow>
-        <boxGeometry args={[2.12, 1.2, 1.55]} />
-        <meshStandardMaterial color="#6e827c" roughness={0.76} metalness={0.1} />
+      <mesh position={[0.62, 1.48, -0.2]} castShadow>
+        <cylinderGeometry args={[0.22, 0.25, 0.5, 10]} />
+        <meshStandardMaterial color="#7e8b82" metalness={0.12} roughness={0.72} />
       </mesh>
-      <mesh position={[0, 1.27, 1.61]} rotation={[-0.08, 0, 0]}>
-        <boxGeometry args={[1.62, 0.62, 0.08]} />
-        <meshPhysicalMaterial color="#7fb0b6" roughness={0.12} metalness={0.05} transparent opacity={0.72} />
-      </mesh>
-      <group position={[0, 0.98, -0.82]}>
-        {[-0.68, 0, 0.68].map((x, index) => (
-          <mesh key={x} position={[x, index === 1 ? 0.28 : 0, 0]} castShadow>
-            <boxGeometry args={[0.58, 0.62, 1.15]} />
-            <meshStandardMaterial color={index === 1 ? '#8d6b43' : '#a17c4f'} roughness={0.94} />
-          </mesh>
-        ))}
-      </group>
-      {([
-        [-1.17, -1.16],
-        [1.17, -1.16],
-        [-1.17, 1.17],
-        [1.17, 1.17],
-      ] as const).map(([x, z], index) => (
-        <group
-          key={`${x}:${z}`}
-          ref={(node) => { wheelRefs.current[index] = node; }}
-          position={[x, 0.04, z]}
-          rotation={[0, 0, Math.PI / 2]}
-        >
-          <mesh castShadow>
-            <cylinderGeometry args={[0.49, 0.49, 0.24, 14]} />
-            <meshStandardMaterial color="#242726" roughness={0.96} />
-          </mesh>
-          <mesh position={[0, 0.13, 0]}>
-            <cylinderGeometry args={[0.18, 0.18, 0.27, 12]} />
-            <meshStandardMaterial color="#87908d" metalness={0.5} roughness={0.5} />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 0.1, 1.95]}>
-        <boxGeometry args={[1.5, 0.18, 0.14]} />
-        <meshStandardMaterial color="#e1c685" emissive="#8a6427" emissiveIntensity={0.18} />
+      <mesh position={[0, 0.58, -2.15]}>
+        <sphereGeometry args={[0.09, 10, 8]} />
+        <meshStandardMaterial color="#f3d894" emissive="#b57b2f" emissiveIntensity={vehicle.active ? 0.9 : 0.15} />
       </mesh>
     </group>
   );

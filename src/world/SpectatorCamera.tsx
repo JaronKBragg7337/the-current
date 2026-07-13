@@ -36,7 +36,8 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
   const desired = useMemo(() => new Vector3(), []);
   const direction = useMemo(() => new Vector3(), []);
   const targetDelta = useMemo(() => new Vector3(), []);
-  const followLift = useMemo(() => new Vector3(0, 4.6, 0), []);
+  const followLift = useMemo(() => new Vector3(0, 3.15, 0), []);
+  const followSide = useMemo(() => new Vector3(), []);
   const orbitalOffset = useMemo(() => new Vector3(58, 45, 58), []);
   const raycaster = useMemo(() => new Raycaster(), []);
   const lastDiagnosticsAtRef = useRef(-1);
@@ -127,7 +128,11 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
       controls.target.lerp(target, 1 - Math.exp(-delta * 9));
       if (transitionRef.current < 1) {
         direction.set(Math.sin(selectedPerson.yaw), 0, Math.cos(selectedPerson.yaw));
-        desired.copy(target).addScaledVector(direction, -8.5).add(followLift);
+        followSide.set(direction.z, 0, -direction.x);
+        desired.copy(target)
+          .addScaledVector(direction, -7.8)
+          .addScaledVector(followSide, 2.8)
+          .add(followLift);
         camera.position.lerp(desired, 1 - Math.exp(-delta * 4.5));
       }
     } else {
