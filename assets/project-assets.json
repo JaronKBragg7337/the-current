@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "lastBuiltAt": "2026-07-13",
+  "assets": [
+    {
+      "id": "confluence-world-kit",
+      "name": "Confluence Civic and Economy Kit",
+      "creator": "The Current contributors",
+      "origin": "project-authored",
+      "externalInputs": [],
+      "license": "MIT",
+      "canonicalConventions": {
+        "metersPerUnit": 1,
+        "runtimeUpAxis": "+Y",
+        "runtimeForwardAxis": "-Z",
+        "groundOrigin": true
+      },
+      "assetRoots": [
+        "Asset_MarketStall",
+        "Asset_WaterWorks",
+        "Asset_TimberYard",
+        "Asset_StoneDepot",
+        "Asset_Generator",
+        "Asset_StreetLamp",
+        "Asset_Bench",
+        "Asset_FarmStand",
+        "Asset_CargoCart"
+      ],
+      "source": {
+        "path": "assets/source/confluence-world-kit.blend",
+        "bytes": 221835,
+        "sha256": "435df4b90955b418dea16809a83948a4ff04d02ca1ab7223874c265eca6c8431"
+      },
+      "generator": {
+        "path": "tools/blender/generate_confluence_kit.py",
+        "bytes": 17650,
+        "sha256": "36ad8286b66560f6d73083791b5b27b16dfe95483848d0a9381c3114b19cfc71",
+        "tool": "Blender 5.1.2"
+      },
+      "runtime": {
+        "path": "assets/runtime/confluence-world-kit.glb",
+        "bytes": 263736,
+        "sha256": "f2776743a6cbdc4d9e4961e32b75a017473d4a2cd41f53332c65bf57be7a92bd",
+        "meshRoots": 9,
+        "materialCount": 13,
+        "textureCount": 0,
+        "compression": ["EXT_meshopt_compression", "KHR_mesh_quantization"]
+      },
+      "optimization": {
+        "script": "scripts/optimize-confluence-kit.ts",
+        "tool": "glTF Transform 4.4.1",
+        "meshoptimizer": "1.2.0",
+        "simplifyRatio": 0.65,
+        "simplifyError": 0.001,
+        "modifications": [
+          "joined authored parts per asset while preserving shared material primitives",
+          "welded and deduplicated geometry",
+          "simplified within a 0.1% extent error budget",
+          "quantized attributes",
+          "compressed geometry with meshopt"
+        ]
+      }
+    }
+  ]
+}

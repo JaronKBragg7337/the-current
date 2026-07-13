@@ -9,6 +9,7 @@ This document separates software licensing, incorporated asset licensing, and ca
 - The Current source code is released under the repository's [MIT License](../LICENSE).
 - **Incorporated external assets: none.** [`assets/manifest.json`](../assets/manifest.json) has an empty `externalAssets` array.
 - **Redistributed external runtime files: none.** No candidate archive or derivative is committed under `assets/runtime/`.
+- **Project-authored runtime asset:** the MIT-licensed Confluence Civic and Economy Kit is inventoried separately in [`assets/project-assets.json`](../assets/project-assets.json); it has no external art inputs or attribution requirement.
 - **Research candidates: 28, all not downloaded.** They are tracked separately in [`assets/source-catalog.json`](../assets/source-catalog.json).
 - Procedural runtime geometry authored in this repository is part of The Current's MIT-licensed source/output unless a future file explicitly documents another origin.
 

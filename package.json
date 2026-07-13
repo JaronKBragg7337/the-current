@@ -27,7 +27,9 @@
     "sim:150": "tsx scripts/run-simulation.ts --days 150 --seed current-public-001 --out benchmarks/results/simulation-150d.json",
     "sim:long": "tsx scripts/run-simulation.ts --days 1000 --seed current-endurance-001 --out benchmarks/results/simulation-1000d.json",
     "data:ingest": "tsx scripts/ingest-signals.ts",
-    "assets:validate": "tsx scripts/validate-assets.ts",
+    "assets:validate": "tsx scripts/validate-assets.ts && tsx scripts/validate-project-assets.ts",
+    "assets:world-kit:optimize": "tsx scripts/optimize-confluence-kit.ts",
+    "evidence:visual": "tsx scripts/capture-visual-evidence.ts",
     "licenses:generate": "tsx scripts/dependency-licenses.ts --write",
     "licenses:validate": "tsx scripts/dependency-licenses.ts --check"
   },
