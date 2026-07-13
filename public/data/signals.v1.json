@@ -1,0 +1,495 @@
+{
+  "schemaVersion": "signal-snapshot.v1",
+  "normalizerVersion": "normalizer.v1",
+  "generatedAt": "2026-01-15T12:00:00.000Z",
+  "mode": "offline",
+  "fixture": true,
+  "fixtureVersion": "synthetic-signals.v1",
+  "sources": [
+    {
+      "adapter": "synthetic-fixture",
+      "provider": "The Current contributors",
+      "status": "synthetic",
+      "observationCount": 5,
+      "startedAt": "2026-01-15T12:00:00.000Z",
+      "finishedAt": "2026-01-15T12:00:00.000Z"
+    }
+  ],
+  "observations": [
+    {
+      "schemaVersion": "observation.v1",
+      "id": "obs:synthetic:quake-sensor-a",
+      "observedAt": "2026-01-15T10:00:00.000Z",
+      "ingestedAt": "2026-01-15T12:00:00.000Z",
+      "domain": "disaster",
+      "eventType": "earthquake",
+      "geography": {
+        "kind": "point",
+        "latitude": 12.34,
+        "longitude": -45.67
+      },
+      "metrics": {
+        "magnitude": 5.4,
+        "depthKm": 18,
+        "tsunami": false
+      },
+      "evidence": {
+        "directness": 0.95,
+        "timeliness": 0.95,
+        "officialSource": 0.9
+      },
+      "source": {
+        "adapter": "synthetic-seismic-a",
+        "provider": "The Current synthetic fixture",
+        "upstreamId": "quake-sensor-a",
+        "upstreamUrl": "https://www.heartbeatobservatory.com/worlds/the-current/#synthetic-quake-a",
+        "lineage": [
+          "origin:synthetic-seismic-a",
+          "event:synthetic:quake-a"
+        ],
+        "attribution": {
+          "title": "The Current synthetic seismic-a fixture",
+          "creator": "The Current contributors",
+          "sourceUrl": "https://www.heartbeatobservatory.com/worlds/the-current/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "retrievedAt": "2026-01-15T12:00:00.000Z",
+          "redistribution": "permitted",
+          "notes": "Authored test data only; it does not describe a real event, person, or source record."
+        }
+      },
+      "tags": [
+        "earthquake",
+        "synthetic"
+      ]
+    },
+    {
+      "schemaVersion": "observation.v1",
+      "id": "obs:synthetic:quake-sensor-b",
+      "observedAt": "2026-01-15T10:04:00.000Z",
+      "ingestedAt": "2026-01-15T12:00:00.000Z",
+      "domain": "disaster",
+      "eventType": "earthquake",
+      "geography": {
+        "kind": "point",
+        "latitude": 12.341,
+        "longitude": -45.669
+      },
+      "metrics": {
+        "magnitude": 5.3,
+        "depthKm": 17.5,
+        "tsunami": false
+      },
+      "evidence": {
+        "directness": 0.85,
+        "timeliness": 0.95,
+        "officialSource": 0.8
+      },
+      "source": {
+        "adapter": "synthetic-seismic-b",
+        "provider": "The Current synthetic fixture",
+        "upstreamId": "quake-sensor-b",
+        "upstreamUrl": "https://www.heartbeatobservatory.com/worlds/the-current/#synthetic-quake-b",
+        "lineage": [
+          "origin:synthetic-seismic-b",
+          "event:synthetic:quake-b"
+        ],
+        "attribution": {
+          "title": "The Current synthetic seismic-b fixture",
+          "creator": "The Current contributors",
+          "sourceUrl": "https://www.heartbeatobservatory.com/worlds/the-current/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "retrievedAt": "2026-01-15T12:00:00.000Z",
+          "redistribution": "permitted",
+          "notes": "Authored test data only; it does not describe a real event, person, or source record."
+        }
+      },
+      "tags": [
+        "earthquake",
+        "synthetic"
+      ]
+    },
+    {
+      "schemaVersion": "observation.v1",
+      "id": "obs:synthetic:space-weather",
+      "observedAt": "2026-01-15T11:00:00.000Z",
+      "ingestedAt": "2026-01-15T12:00:00.000Z",
+      "domain": "space",
+      "eventType": "geomagnetic-activity",
+      "geography": {
+        "kind": "global"
+      },
+      "metrics": {
+        "kpIndex": 6.1,
+        "stationCount": 8
+      },
+      "evidence": {
+        "directness": 0.95,
+        "timeliness": 0.9,
+        "officialSource": 0.9
+      },
+      "source": {
+        "adapter": "synthetic-space-weather",
+        "provider": "The Current synthetic fixture",
+        "upstreamId": "space-weather-test-1",
+        "upstreamUrl": "https://www.heartbeatobservatory.com/worlds/the-current/#synthetic-space-weather",
+        "lineage": [
+          "origin:synthetic-space-weather",
+          "measurement:synthetic:kp-1"
+        ],
+        "attribution": {
+          "title": "The Current synthetic space-weather fixture",
+          "creator": "The Current contributors",
+          "sourceUrl": "https://www.heartbeatobservatory.com/worlds/the-current/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "retrievedAt": "2026-01-15T12:00:00.000Z",
+          "redistribution": "permitted",
+          "notes": "Authored test data only; it does not describe a real event, person, or source record."
+        }
+      },
+      "tags": [
+        "space-weather",
+        "synthetic"
+      ]
+    },
+    {
+      "schemaVersion": "observation.v1",
+      "id": "obs:synthetic:technology-attention",
+      "observedAt": "2026-01-15T09:30:00.000Z",
+      "publishedAt": "2026-01-15T09:30:00.000Z",
+      "ingestedAt": "2026-01-15T12:00:00.000Z",
+      "domain": "technology",
+      "eventType": "community-technology-attention",
+      "geography": {
+        "kind": "global"
+      },
+      "metrics": {
+        "itemId": 1,
+        "rank": 3,
+        "score": 180,
+        "commentCount": 64,
+        "itemType": "story"
+      },
+      "evidence": {
+        "directness": 0.75,
+        "timeliness": 0.9,
+        "officialSource": 0.7
+      },
+      "source": {
+        "adapter": "synthetic-attention",
+        "provider": "The Current synthetic fixture",
+        "upstreamId": "attention-test-1",
+        "upstreamUrl": "https://www.heartbeatobservatory.com/worlds/the-current/#synthetic-attention",
+        "lineage": [
+          "origin:synthetic-attention",
+          "item:synthetic:attention-1"
+        ],
+        "attribution": {
+          "title": "The Current synthetic attention fixture",
+          "creator": "The Current contributors",
+          "sourceUrl": "https://www.heartbeatobservatory.com/worlds/the-current/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "retrievedAt": "2026-01-15T12:00:00.000Z",
+          "redistribution": "permitted",
+          "notes": "Authored test data only; it does not describe a real event, person, or source record."
+        }
+      },
+      "tags": [
+        "community-attention",
+        "technology",
+        "synthetic"
+      ]
+    },
+    {
+      "schemaVersion": "observation.v1",
+      "id": "obs:synthetic:weather",
+      "observedAt": "2026-01-15T11:45:00.000Z",
+      "ingestedAt": "2026-01-15T12:00:00.000Z",
+      "domain": "climate",
+      "eventType": "weather-conditions",
+      "geography": {
+        "kind": "point",
+        "latitude": 39.77,
+        "longitude": -86.16,
+        "radiusKm": 25
+      },
+      "metrics": {
+        "temperatureC": 36,
+        "relativeHumidityPercent": 61,
+        "precipitationMm": 2.5,
+        "weatherCode": 61,
+        "windSpeedKmh": 28
+      },
+      "evidence": {
+        "directness": 0.9,
+        "timeliness": 0.95,
+        "officialSource": 0.75
+      },
+      "source": {
+        "adapter": "synthetic-weather",
+        "provider": "The Current synthetic fixture",
+        "upstreamId": "weather-test-1",
+        "upstreamUrl": "https://www.heartbeatobservatory.com/worlds/the-current/#synthetic-weather",
+        "lineage": [
+          "origin:synthetic-weather",
+          "forecast-cell:synthetic:weather-1"
+        ],
+        "attribution": {
+          "title": "The Current synthetic weather fixture",
+          "creator": "The Current contributors",
+          "sourceUrl": "https://www.heartbeatobservatory.com/worlds/the-current/",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "retrievedAt": "2026-01-15T12:00:00.000Z",
+          "redistribution": "permitted",
+          "notes": "Authored test data only; it does not describe a real event, person, or source record."
+        }
+      },
+      "tags": [
+        "weather",
+        "synthetic"
+      ]
+    }
+  ],
+  "signals": [
+    {
+      "schemaVersion": "causal-signal.v1",
+      "normalizerVersion": "normalizer.v1",
+      "id": "signal:a88b9bbd",
+      "asOf": "2026-01-15T11:45:00.000Z",
+      "domain": "climate",
+      "eventFamily": "weather-conditions",
+      "geography": {
+        "kind": "point",
+        "latitude": 39.77,
+        "longitude": -86.16,
+        "radiusKm": 25
+      },
+      "intensity": 0.28,
+      "confidence": 0.7094999999999999,
+      "sourceAgreement": 0.5,
+      "novelty": 1,
+      "durationDays": 0.75,
+      "decay": {
+        "model": "exponential-half-life",
+        "halfLifeDays": 0.25
+      },
+      "objectivePressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": -0.1125,
+        "infrastructureReliability": -0.098,
+        "energyReliability": -0.0625,
+        "transportCapacity": -0.12600000000000003,
+        "tradeCapacity": 0,
+        "economicConfidence": 0,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0,
+        "migrationPressure": 0
+      },
+      "beliefPressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": 0,
+        "energyReliability": 0,
+        "transportCapacity": 0,
+        "tradeCapacity": 0,
+        "economicConfidence": 0,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0.0504,
+        "migrationPressure": 0
+      },
+      "observationIds": [
+        "obs:synthetic:weather"
+      ],
+      "lineage": [
+        "forecast-cell:synthetic:weather-1",
+        "origin:synthetic-weather"
+      ],
+      "rationale": "Current weather becomes local, rapidly decaying operating pressure; simulated exposure and infrastructure determine consequences.",
+      "revision": 0
+    },
+    {
+      "schemaVersion": "causal-signal.v1",
+      "normalizerVersion": "normalizer.v1",
+      "id": "signal:ed98fa0f",
+      "asOf": "2026-01-15T10:04:00.000Z",
+      "domain": "disaster",
+      "eventFamily": "earthquake",
+      "geography": {
+        "kind": "point",
+        "latitude": 12.34,
+        "longitude": -45.67
+      },
+      "intensity": 0.5641666666666667,
+      "confidence": 0.8166874999999999,
+      "sourceAgreement": 0.75,
+      "novelty": 1,
+      "durationDays": 3,
+      "decay": {
+        "model": "exponential-half-life",
+        "halfLifeDays": 1
+      },
+      "objectivePressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": -0.1955388733705773,
+        "infrastructureReliability": -0.5586824953445065,
+        "energyReliability": 0,
+        "transportCapacity": -0.36314362197392924,
+        "tradeCapacity": 0,
+        "economicConfidence": -0.13967062383612663,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0,
+        "migrationPressure": 0
+      },
+      "beliefPressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": 0,
+        "energyReliability": 0,
+        "transportCapacity": 0,
+        "tradeCapacity": 0,
+        "economicConfidence": -0.1117364990689013,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0.3910777467411546,
+        "migrationPressure": 0.16760474860335195
+      },
+      "observationIds": [
+        "obs:synthetic:quake-sensor-a",
+        "obs:synthetic:quake-sensor-b"
+      ],
+      "lineage": [
+        "event:synthetic:quake-a",
+        "event:synthetic:quake-b",
+        "origin:synthetic-seismic-a",
+        "origin:synthetic-seismic-b"
+      ],
+      "rationale": "Earthquake magnitude raises bounded infrastructure, transport, health, and fear pressures without directly damaging simulated assets.",
+      "revision": 0
+    },
+    {
+      "schemaVersion": "causal-signal.v1",
+      "normalizerVersion": "normalizer.v1",
+      "id": "signal:d57c2955",
+      "asOf": "2026-01-15T11:00:00.000Z",
+      "domain": "space",
+      "eventFamily": "geomagnetic-activity",
+      "geography": {
+        "kind": "global"
+      },
+      "intensity": 0.6777777777777776,
+      "confidence": 0.7589999999999999,
+      "sourceAgreement": 0.5,
+      "novelty": 1,
+      "durationDays": 1,
+      "decay": {
+        "model": "exponential-half-life",
+        "halfLifeDays": 0.25
+      },
+      "objectivePressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": -0.14699999999999994,
+        "energyReliability": -0.23099999999999998,
+        "transportCapacity": -0.06299999999999999,
+        "tradeCapacity": 0,
+        "economicConfidence": 0,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0,
+        "migrationPressure": 0
+      },
+      "beliefPressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": 0,
+        "energyReliability": 0,
+        "transportCapacity": 0,
+        "tradeCapacity": 0,
+        "economicConfidence": 0,
+        "innovationMomentum": 0.05422222222222222,
+        "socialCohesion": 0,
+        "publicFear": 0.06299999999999999,
+        "migrationPressure": 0
+      },
+      "observationIds": [
+        "obs:synthetic:space-weather"
+      ],
+      "lineage": [
+        "measurement:synthetic:kp-1",
+        "origin:synthetic-space-weather"
+      ],
+      "rationale": "The planetary K-index becomes short-lived grid and navigation pressure only above elevated levels; it never directly disables systems.",
+      "revision": 0
+    },
+    {
+      "schemaVersion": "causal-signal.v1",
+      "normalizerVersion": "normalizer.v1",
+      "id": "signal:1daac033",
+      "asOf": "2026-01-15T09:30:00.000Z",
+      "domain": "technology",
+      "eventFamily": "community-technology-attention",
+      "geography": {
+        "kind": "global"
+      },
+      "intensity": 0.5829869356116029,
+      "confidence": 0.63525,
+      "sourceAgreement": 0.5,
+      "novelty": 1,
+      "durationDays": 1,
+      "decay": {
+        "model": "exponential-half-life",
+        "halfLifeDays": 0.4
+      },
+      "objectivePressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": 0,
+        "energyReliability": 0,
+        "transportCapacity": 0,
+        "tradeCapacity": 0,
+        "economicConfidence": 0,
+        "innovationMomentum": 0,
+        "socialCohesion": 0,
+        "publicFear": 0,
+        "migrationPressure": 0
+      },
+      "beliefPressure": {
+        "foodSecurity": 0,
+        "waterSecurity": 0,
+        "publicHealth": 0,
+        "infrastructureReliability": 0,
+        "energyReliability": 0,
+        "transportCapacity": 0,
+        "tradeCapacity": 0,
+        "economicConfidence": 0.06995843227339234,
+        "innovationMomentum": 0.40809085492812197,
+        "socialCohesion": 0,
+        "publicFear": 0,
+        "migrationPressure": 0
+      },
+      "observationIds": [
+        "obs:synthetic:technology-attention"
+      ],
+      "lineage": [
+        "item:synthetic:attention-1",
+        "origin:synthetic-attention"
+      ],
+      "rationale": "Aggregate public attention supplies a brief belief and curiosity pressure; it conveys no claim that a technology is valid or useful.",
+      "revision": 0
+    }
+  ]
+}
