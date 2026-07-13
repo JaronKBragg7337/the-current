@@ -16,7 +16,7 @@ export default defineConfig({
   // turn persistence assertions into timing failures rather than useful tests.
   fullyParallel: false,
   forbidOnly: isCi,
-  retries: isCi ? 2 : 0,
+  retries: isCi ? 1 : 0,
   workers: 1,
   timeout: isCi ? 180_000 : 90_000,
   expect: {
@@ -28,6 +28,9 @@ export default defineConfig({
   use: {
     baseURL,
     colorScheme: 'dark',
+    contextOptions: {
+      reducedMotion: 'reduce',
+    },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',

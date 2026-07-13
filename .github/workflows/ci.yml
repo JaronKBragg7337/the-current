@@ -84,10 +84,14 @@ jobs:
           path: dist
 
   browser:
-    name: Desktop and mobile Chromium
+    name: Browser · ${{ matrix.project }}
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop-chromium, mobile-chromium]
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -108,13 +112,13 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Exercise the spectator world
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=${{ matrix.project }}
 
       - name: Preserve browser evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-evidence-${{ github.run_attempt }}
+          name: playwright-evidence-${{ matrix.project }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/

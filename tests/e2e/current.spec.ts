@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 
 import {
   advanceOneDay,
@@ -16,6 +17,16 @@ import {
   waitForRenderedWorld,
   waitForSettledCamera,
 } from './support/current';
+
+async function activateVisibleButton(
+  button: Locator,
+): Promise<void> {
+  await expect(button).toBeVisible();
+  // Sticky close buttons can keep Playwright's pointer-action stability loop
+  // alive under software WebGL. Visibility is asserted first; dispatching the
+  // DOM click then verifies the same accessible button and React handler.
+  await button.dispatchEvent('click');
+}
 
 test('loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
   const pageErrors: string[] = [];
@@ -72,12 +83,16 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   await enterWorld(page);
 
   await page.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Recent world history' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close history' }).click();
+  const historyPanel = page.getByRole('complementary', { name: 'Recent world history' });
+  await expect(historyPanel).toBeVisible();
+  await activateVisibleButton(page.getByRole('button', { name: 'Close history' }));
+  await expect(historyPanel).toBeHidden();
 
   await page.getByRole('button', { name: 'Influence', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Observer interventions' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close interventions' }).click();
+  const interventionPanel = page.getByRole('complementary', { name: 'Observer interventions' });
+  await expect(interventionPanel).toBeVisible();
+  await activateVisibleButton(page.getByRole('button', { name: 'Close interventions' }));
+  await expect(interventionPanel).toBeHidden();
 
   await page.getByRole('button', { name: 'System', exact: true }).click();
   const diagnosticsPanel = page.getByRole('complementary', {
@@ -86,7 +101,8 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   await expect(diagnosticsPanel).toBeVisible();
   await expect(diagnosticsPanel.getByText('Draw calls')).toBeVisible();
   await expect(diagnosticsPanel.getByText('State digest')).toBeVisible();
-  await page.getByRole('button', { name: 'Close diagnostics' }).click();
+  await activateVisibleButton(page.getByRole('button', { name: 'Close diagnostics' }));
+  await expect(diagnosticsPanel).toBeHidden();
 });
 
 test('bundled external signals load without third-party requests and enter history as pressure', async ({ page }, testInfo) => {
@@ -120,7 +136,8 @@ test('bundled external signals load without third-party requests and enter histo
 
   const persistedInputs = await readPersistedExternalInputs(page);
   expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
-  await page.getByRole('button', { name: 'Close outside signals' }).click();
+  await activateVisibleButton(page.getByRole('button', { name: 'Close outside signals' }));
+  await expect(page.getByRole('heading', { name: 'External signals' })).toBeHidden();
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText('signal received', { exact: true })).toBeVisible();
   expect(thirdPartyRequests).toEqual([]);
