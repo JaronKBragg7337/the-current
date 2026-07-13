@@ -1,6 +1,6 @@
 import { AdaptiveDpr, Sky } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
-import { memo, useMemo } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { memo, useEffect, useMemo } from 'react';
 import { ACESFilmicToneMapping, SRGBColorSpace } from 'three';
 
 import type { CameraMode, Selection, VehicleProjection } from '../app/types';
@@ -8,6 +8,7 @@ import type { WorldProjection } from '../simulation';
 import { BuildingFigure } from './BuildingFigure';
 import type { RenderDiagnostics } from './DiagnosticsBridge';
 import { DiagnosticsBridge } from './DiagnosticsBridge';
+import { EconomyLayer } from './EconomyLayer';
 import { EventLayer } from './EventLayer';
 import { FarPopulation } from './FarPopulation';
 import { Landmarks } from './Landmarks';
@@ -29,6 +30,14 @@ interface WorldCanvasProps {
   onCameraModeChange: (mode: CameraMode) => void;
   onCameraDiagnostics: (diagnostics: CameraDiagnostics) => void;
   onDiagnostics: (diagnostics: RenderDiagnostics) => void;
+}
+
+function ProjectionShadowBudget({ revision }: { revision: string }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, revision]);
+  return null;
 }
 
 function WorldCanvasComponent({
@@ -82,7 +91,8 @@ function WorldCanvasComponent({
         gl.outputColorSpace = SRGBColorSpace;
         gl.toneMapping = ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.08;
-        gl.shadowMap.autoUpdate = true;
+        gl.shadowMap.autoUpdate = false;
+        gl.shadowMap.needsUpdate = true;
       }}
       onPointerMissed={() => onSelect(null)}
     >
@@ -106,11 +116,13 @@ function WorldCanvasComponent({
         shadow-bias={-0.00018}
       />
       <Sky distance={450_000} sunPosition={[72, 108, 38]} turbidity={3.8} rayleigh={1.7} mieCoefficient={0.006} mieDirectionalG={0.82} />
+      <ProjectionShadowBudget revision={projection.digest} />
 
       <Terrain />
       <RoadNetwork buildings={projection.buildings} />
       <Nature />
       <Landmarks />
+      <EconomyLayer buildings={projection.buildings} resources={projection.resources} />
       {projection.buildings.map((building) => (
         <BuildingFigure
           key={building.id}

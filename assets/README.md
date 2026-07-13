@@ -1,18 +1,20 @@
 # Asset pipeline
 
-This directory is the provenance boundary between external source material and The Current's runtime. It currently contains **metadata and instructions only**: no downloaded pack and no external runtime binary has been incorporated.
+This directory is the provenance boundary between external source material and The Current's runtime. No downloaded pack or external runtime binary has been incorporated. It now also contains a separately inventoried, project-authored Blender/GLB kit.
 
 ## Files and directories
 
 | Path | Commit? | Purpose |
 | --- | --- | --- |
 | `manifest.json` | Yes | External assets actually incorporated and redistributed at runtime. It is intentionally empty today. |
+| `project-assets.json` | Yes | Project-authored source/runtime files, hashes, tools, roots, and transformations. |
 | `manifest.schema.json` | Yes | JSON Schema draft 2020-12 contract for incorporated records. |
 | `source-catalog.json` | Yes | Research candidates only. Every current entry is not downloaded and not incorporated. |
 | `source-catalog.schema.json` | Yes | Schema that prevents research records from claiming download/incorporation state. |
 | `PIPELINE.md` | Yes | Canonical Blender/glTF normalization and verification procedure. |
 | `licenses/` | Yes, once created | Asset-specific license/provenance evidence for incorporated assets. A generic license file is not enough. |
-| `runtime/` | Yes, selected files only | Optimized GLB, texture, animation, audio, collision, and metadata files listed and hashed in the incorporated manifest. |
+| `runtime/` | Yes, selected files only | Optimized derivatives listed in either the external manifest or project-authored inventory. |
+| `source/` | Yes, selected files only | Reasonably sized project-authored Blender sources; never a holding area for downloaded packs. |
 | `source-cache/` | **No** | Ignored local original archives and source packages. |
 | `work/` | **No** | Ignored editable/intermediate Blender and conversion work. |
 | `generated/` | **No** | Ignored unreviewed generated output awaiting validation and promotion. |

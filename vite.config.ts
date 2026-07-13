@@ -4,6 +4,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [react()],
   base: process.env.VITE_BASE_PATH ?? '/',
+  server: {
+    watch: {
+      ignored: ['**/assets/source/**', '**/assets/generated/**', '**/tools/blender/**'],
+    },
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

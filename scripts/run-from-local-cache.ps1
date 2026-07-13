@@ -19,6 +19,8 @@ param(
         'sim:long',
         'data:ingest',
         'assets:validate',
+        'assets:world-kit:optimize',
+        'evidence:visual',
         'licenses:generate',
         'licenses:validate'
     )]

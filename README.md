@@ -73,7 +73,7 @@ npm run sim:150
 npm run test:e2e
 ```
 
-The recorded checkpoint has 59 passing Vitest tests across 16 files. The complete Playwright matrix has 10 applicable passing cases across desktop and Pixel 7 Chromium, with 6 intentional project-specific skips. GitHub's release workflow independently passed quality, both browser projects, and Pages deployment; a post-deploy WebGL smoke test also passed against the public origin. Deterministic replay, browser evidence, and screenshots are cataloged in [docs/VERIFICATION.md](docs/VERIFICATION.md).
+The recorded checkpoint has 76 passing Vitest tests across 20 files. The complete Playwright matrix has 10 applicable passing cases across desktop and Pixel 7 Chromium, with 6 intentional project-specific skips. GitHub's release workflow independently passed quality, both browser projects, and Pages deployment; a post-deploy WebGL smoke test also passed against the public origin. Deterministic replay, browser evidence, and screenshots are cataloged in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Architecture and operations
 

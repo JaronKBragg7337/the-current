@@ -1,0 +1,196 @@
+{
+  "capturedAt": "2026-07-13T21:47:12.221Z",
+  "url": "http://localhost:5173/?world=local",
+  "measurements": {
+    "desktopOrbital": {
+      "cameraMode": "orbital",
+      "cameraPosition": [
+        96.00000000000014,
+        75.99999999999989,
+        96.0000000000002
+      ],
+      "cameraTransitioning": false,
+      "day": 0,
+      "digest": "3b0b0ccebd3d5bb0",
+      "population": 20,
+      "personIds": [
+        "person:000001",
+        "person:000002",
+        "person:000003",
+        "person:000004",
+        "person:000005",
+        "person:000006",
+        "person:000007",
+        "person:000008",
+        "person:000009",
+        "person:000010",
+        "person:000011",
+        "person:000012",
+        "person:000013",
+        "person:000014",
+        "person:000015",
+        "person:000016",
+        "person:000017",
+        "person:000018",
+        "person:000019",
+        "person:000020"
+      ],
+      "ready": true,
+      "render": {
+        "calls": 409,
+        "triangles": 165588,
+        "geometries": 170,
+        "textures": 4,
+        "fps": 3
+      },
+      "saveStatus": "saved",
+      "selected": null,
+      "simulationMillisecondsPerDay": 0,
+      "usingWorker": true
+    },
+    "desktopFollow": {
+      "cameraMode": "follow",
+      "cameraPosition": [
+        -2.4126517479518155,
+        7.66440630726219,
+        -13.47446515502217
+      ],
+      "cameraTransitioning": true,
+      "day": 0,
+      "digest": "3b0b0ccebd3d5bb0",
+      "population": 20,
+      "personIds": [
+        "person:000001",
+        "person:000002",
+        "person:000003",
+        "person:000004",
+        "person:000005",
+        "person:000006",
+        "person:000007",
+        "person:000008",
+        "person:000009",
+        "person:000010",
+        "person:000011",
+        "person:000012",
+        "person:000013",
+        "person:000014",
+        "person:000015",
+        "person:000016",
+        "person:000017",
+        "person:000018",
+        "person:000019",
+        "person:000020"
+      ],
+      "ready": true,
+      "render": {
+        "calls": 258,
+        "triangles": 129704,
+        "geometries": 185,
+        "textures": 4,
+        "fps": 3
+      },
+      "saveStatus": "saved",
+      "selected": {
+        "kind": "person",
+        "id": "person:000008"
+      },
+      "simulationMillisecondsPerDay": 0,
+      "usingWorker": true
+    },
+    "desktopFirstPerson": {
+      "cameraMode": "first-person",
+      "cameraPosition": [
+        -9.999999915106144,
+        1.7335500663595917,
+        -11.000000027686477
+      ],
+      "cameraTransitioning": false,
+      "day": 0,
+      "digest": "3b0b0ccebd3d5bb0",
+      "population": 20,
+      "personIds": [
+        "person:000001",
+        "person:000002",
+        "person:000003",
+        "person:000004",
+        "person:000005",
+        "person:000006",
+        "person:000007",
+        "person:000008",
+        "person:000009",
+        "person:000010",
+        "person:000011",
+        "person:000012",
+        "person:000013",
+        "person:000014",
+        "person:000015",
+        "person:000016",
+        "person:000017",
+        "person:000018",
+        "person:000019",
+        "person:000020"
+      ],
+      "ready": true,
+      "render": {
+        "calls": 635,
+        "triangles": 165072,
+        "geometries": 458,
+        "textures": 4,
+        "fps": 3
+      },
+      "saveStatus": "saved",
+      "selected": {
+        "kind": "person",
+        "id": "person:000008"
+      },
+      "simulationMillisecondsPerDay": 0,
+      "usingWorker": true
+    },
+    "mobileOrbital": {
+      "cameraMode": "orbital",
+      "cameraPosition": [
+        95.99999999999994,
+        76.00000000000004,
+        95.99999999999996
+      ],
+      "cameraTransitioning": false,
+      "day": 0,
+      "digest": "3b0b0ccebd3d5bb0",
+      "population": 20,
+      "personIds": [
+        "person:000001",
+        "person:000002",
+        "person:000003",
+        "person:000004",
+        "person:000005",
+        "person:000006",
+        "person:000007",
+        "person:000008",
+        "person:000009",
+        "person:000010",
+        "person:000011",
+        "person:000012",
+        "person:000013",
+        "person:000014",
+        "person:000015",
+        "person:000016",
+        "person:000017",
+        "person:000018",
+        "person:000019",
+        "person:000020"
+      ],
+      "ready": true,
+      "render": {
+        "calls": 367,
+        "triangles": 158644,
+        "geometries": 159,
+        "textures": 4,
+        "fps": 7
+      },
+      "saveStatus": "saved",
+      "selected": null,
+      "simulationMillisecondsPerDay": 0,
+      "usingWorker": true
+    }
+  }
+}

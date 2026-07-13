@@ -4,7 +4,7 @@ Updated 2026-07-13. Labels mean **verified**, **partial**, or **unimplemented**.
 
 ## Checkpoint summary
 
-The Current has passed its first functional population milestone as a real deterministic simulation and a navigable Three.js spectator application. A fixed 150-day run and a separate 500-day endurance run both passed 23/23 invariants, exact day-by-day replay, and snapshot restoration. The browser has been exercised with a real module worker, IndexedDB persistence, selection, all three camera modes, a causal intervention, and exact reload of the saved day-three digest.
+The Current has passed its first functional population milestone as a real deterministic simulation and a navigable Three.js spectator application. A fixed 150-day run and a separate 500-day endurance run both passed 23/23 invariants, exact day-by-day replay, and snapshot restoration. The first serious visual pass now adds a reproducible Blender-authored world kit, proportioned citizens, construction-aware building tiers, authoritative road ribbons, visible resource yards, and stronger settlement assembly without changing simulation authority. The browser has been exercised with a real module worker, IndexedDB persistence, selection, all three camera modes, a causal intervention, and exact reload of the saved day-three digest.
 
 This is still an early civilization, not the complete master specification. It has one settlement and several causal subsystems, but not yet the breadth or depth of autonomous firms, institutions, transport, law, culture, conflict, or multi-settlement history required by the final concept.
 
@@ -15,12 +15,12 @@ This is still an early civilization, not the complete master specification. It h
 | Separate public repository | verified | <https://github.com/JaronKBragg7337/the-current>; independent local Git history |
 | Secret-safe repository baseline | verified | `.gitignore`, `SECURITY.md`, no credentials required at runtime |
 | Authoritative specification | verified | `docs/MASTER_SPECIFICATION.md` |
-| Dependency, data, and asset research | verified | Official-source inventories in `docs/LICENSES.md`, `docs/DATA_SOURCES.md`, and `docs/ASSETS.md` |
-| Deterministic population/lifecycle loop | verified | 59 passing tests plus 150- and 500-day reference reports |
+| Dependency, data, and asset research | verified | Official-source inventories in `docs/LICENSES.md`, `docs/DATA_SOURCES.md`, and `docs/ASSETS.md`; the incorporated runtime kit is project-authored and tracked in `assets/project-assets.json` |
+| Deterministic population/lifecycle loop | verified | 76 passing tests plus 150- and 500-day reference reports |
 | Seed replay and snapshot roundtrip | verified | Exact digests `f13e5fe87589ffc3` and `c54644b90116daa4`; 23/23 checks in each report |
 | Worker isolation | verified | Module worker exercised in browser; in-process startup fallback and structured worker errors have tests |
 | Local persistence | verified | IndexedDB autosave, retention, export/import, input records, restore, and day-three browser reload |
-| Three.js spectator world | verified | WebGL render, selection, orbital/follow/first-person transitions, collision handling, screenshots |
+| Three.js spectator world | verified | WebGL render, selection, orbital/follow/first-person transitions, collision handling, distance tiers, visible economy, screenshots |
 | Production/base-path builds | verified | Root, `/the-current/`, and `/worlds/the-current/` builds pass; both subpath artifacts pass static reference/fixture validation |
 | Browser automation | verified | Complete serial Playwright invocation: 10 applicable cases passed, 6 project-specific skips; no failures |
 | Mobile/responsive experience | verified | Pixel 7 Chromium covers worker/WebGL boot, camera transitions, and viewport containment; physical-device profiling remains future work |
@@ -62,17 +62,19 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 - Procedural terrain, water, nature, buildings, construction stages, door openings/interiors, farms, roads, landmarks, resource sites, NPC activity, event markers, and illustrative traffic.
 - Selectable NPCs, buildings, and vehicles; current-person inspection; orbital, third-person, and first-person spectator cameras; camera collision and FOV restoration.
 - Optional panels for resources, history, system diagnostics, external signals, interventions, and selected entities.
+- Locally bundled, Meshopt-compressed project-authored GLB for market, water, timber, stone, energy, street, farm, and transport props; reproducible Blender source and export/optimization scripts.
+- Deterministic citizen appearance and task poses; construction-aware detailed/far buildings; roads and presentation vehicles derived from the same authoritative corridors.
 
 ## Partial systems and important caveats
 
 - **Economy:** scarcity changes prices and resource pressure changes behavior, but prices do not yet ration access. Payments are capped, resources are pooled, and household inventories/possessions are mostly unused. Adults may be counted as employed when no employer has capacity; baseline buildings can produce without a staffed labor roster.
 - **Production and enterprise:** occupations and building output exist, but autonomous firms, ownership transfers, debt, savings decisions, contracts, competitive markets, and physically tracked supply chains do not.
-- **Construction:** projects consume materials and labor over visible stages, but site selection does not yet validate road access, terrain, parcel ownership, or footprint overlap.
+- **Construction:** projects consume materials and labor over visible stages. Footprint overlap, road-corridor clearance, setbacks, and outward growth rings are authoritative; explicit parcel ownership, terrain grading, and guaranteed door-to-road access are not.
 - **Institutions and politics:** six institution types, influence networks, followers, and leadership changes exist. Laws, elections with constituencies, parties, ideology, religion, movements, corruption, coercion, security organizations, and succession institutions do not.
 - **Breakthroughs:** ability, knowledge, resources, support, experimentation, and adoption are represented, but team formation, finance/manufacture/teaching roles, rival proposals, harmful side effects, intellectual property, and broad diffusion are shallow or absent.
-- **Rendering tiers:** near articulated figures and one far instanced representation exist. There is no distinct medium tier or camera-region projection culling; every living NPC still has a detailed React component and callback even when hidden.
+- **Rendering tiers:** near articulated figures, a far instanced population representation, and detailed/far building tiers exist. There is no distinct NPC medium tier or camera-region projection culling; every living NPC and building still owns a React component and frame callback even when hidden.
 - **Navigation and transport:** authoritative people move toward destinations with a 140-metre-per-world-day straight-line budget. Rendered roads are not their navigation graph. Vehicles, cargo labels, and route progress are derived presentation, not authoritative entities or inventories.
-- **Appearance, animation, and mortality:** people have shaped procedural bodies, simple task poses, age scaling and elder hair, but renderer-derived appearance is not saved or inherited. There are no rigged external humanoids, retargeted clips, voice/audio, injuries, bodies, funerals, or crowd occlusion/perception effects.
+- **Appearance, animation, and mortality:** people have proportioned bodies, persistent ID-derived variation, occupation tools, simple idle/walk/work/social/carry poses, age scaling, posture, and elder hair, but renderer-derived appearance is not saved or inherited. There are no canonical rigged humanoids, retargeted clips, voice/audio, bodies, funerals, or crowd occlusion/perception effects.
 - **History:** events, memories, snapshots, ownership, and recent-event inspection exist. The UI does not yet expose complete timeline replay, building provenance, descendants, durable biographies, or post-hoc significance classification.
 - **Persistence resilience:** unsupported worker construction falls back in-process; asynchronous worker crashes surface an error and reject bounded pending waits. Imports gate host mutations, pause at a correlated queue barrier, drain prior writes, and then load. An already-running worker is not automatically replaced after a crash. Schema version 1 is validated; migration from future/older schemas is not implemented.
 - **Observer authority:** intervention effects are authoritative simulation inputs, but energy/cooldowns are localStorage UI limits that a viewer can clear. They are not shared, voted, authenticated, or server-authoritative.
@@ -83,16 +85,16 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 - Multiple settlements, migration between them, settlement founding, colonial expansion, and distinct local interpretations of the same signal.
 - Autonomous businesses, banks, credit/debt inheritance, land markets, taxes, public budgets, monopolies, and transport logistics.
 - Laws, customs, ideologies, religions, social movements, crime, policing, war, organized violence, disease transmission, sanitation, and environmental damage.
-- Authoritative roads, pathfinding/navmesh, personal tools and vehicles, inventories, visible goods delivery, queues, shelves, traffic failures, and industrial processes.
+- Authoritative person pathfinding/navmesh, personal authoritative tools and vehicles, inventories, goods delivery, queues, traffic failures, and industrial processes. Road rendering and presentation vehicles now share the authoritative road corridors, and aggregate resource tiers are visible.
 - Schools as scheduled learning institutions, language/culture transmission, communication networks, journalism, propaganda, voting, protests, and public ceremonies.
-- Weather, daylight/night perception, sound, accessible full interiors, detailed construction labor, animations for sitting/carrying/injury/death, and production-ready external art.
+- Weather, daylight/night perception, sound, accessible full interiors, detailed construction labor, full sitting/injury/death clips, and a production canonical rigged character library.
 - A synchronized persistent public world, moderation, intervention voting/cost service, scheduled live-data operations, historical API, or server-side missed-time execution.
 
 ## Strongest next technical opportunities
 
 1. Shared-world interventions: a public `the_current_interventions` queue with budgets/cooldowns that the tick function feeds into `DayInputs`, so spectators can influence the one world within limits.
 2. Delta sync for spectators: publish per-day event deltas beside the snapshot so clients stop re-downloading the full (multi-MB at scale) world row every change.
-3. Rigged CC0 humanoid/animation stack through the documented asset pipeline, replacing procedural people at near distance (candidates already cataloged in `docs/ASSETS.md`).
+3. Add a canonical rigged humanoid and compatible animation library through the documented asset pipeline, replacing the now-proportioned procedural near people while preserving their deterministic visual traits.
 4. Make work and exchange economically real: employer capacity, wages, household inventories, price-constrained purchases, staffed building output, businesses, ownership, debt, and auditable goods transfers.
 5. Replace straight-line travel and decorative traffic with one authoritative road/nav graph, vehicles, cargo inventories, travel time, delivery events, and congestion/failure consequences (vehicle lanes now derive from authoritative roads; cargo and inventories remain presentational).
 6. Add a second settlement so information, prices, migration, trade, institutions, and interventions can diverge under the same world signal.

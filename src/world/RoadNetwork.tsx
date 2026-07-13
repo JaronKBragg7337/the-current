@@ -1,62 +1,21 @@
 import { useMemo } from 'react';
-import { BufferGeometry, Float32BufferAttribute, Vector3 } from 'three';
 
 import { MAIN_ROADS, type BuildingProjection } from '../simulation';
+import { createRoadRibbonGeometry, type RoadPoint } from './roadGeometry';
 import { terrainHeight } from './terrain';
 
 interface RoadNetworkProps {
   buildings: BuildingProjection[];
 }
 
-interface RoadPoint {
-  x: number;
-  z: number;
-}
-
-function ribbonGeometry(points: RoadPoint[], halfWidth: number): BufferGeometry {
-  const vertices: number[] = [];
-  const indices: number[] = [];
-  const uvs: number[] = [];
-  let distance = 0;
-
-  points.forEach((point, index) => {
-    const previous = points[Math.max(0, index - 1)] ?? point;
-    const next = points[Math.min(points.length - 1, index + 1)] ?? point;
-    const direction = new Vector3(next.x - previous.x, 0, next.z - previous.z).normalize();
-    const normalX = -direction.z;
-    const normalZ = direction.x;
-    if (index > 0) {
-      const prior = points[index - 1];
-      if (prior !== undefined) distance += Math.hypot(point.x - prior.x, point.z - prior.z);
-    }
-    const leftX = point.x + normalX * halfWidth;
-    const leftZ = point.z + normalZ * halfWidth;
-    const rightX = point.x - normalX * halfWidth;
-    const rightZ = point.z - normalZ * halfWidth;
-    vertices.push(leftX, terrainHeight(leftX, leftZ) + 0.11, leftZ);
-    vertices.push(rightX, terrainHeight(rightX, rightZ) + 0.11, rightZ);
-    uvs.push(0, distance / 4, 1, distance / 4);
-    if (index < points.length - 1) {
-      const start = index * 2;
-      indices.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
-    }
-  });
-
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
 export function RoadNetwork({ buildings }: RoadNetworkProps) {
   const geometries = useMemo(() => {
     // The main road corridors are authoritative simulation data: vehicles
     // drive exactly on them and building placement keeps clear of them.
-    const roads: { points: RoadPoint[]; halfWidth: number }[] = MAIN_ROADS.map((road) => ({
+    const roads: { points: RoadPoint[]; halfWidth: number; main: boolean }[] = MAIN_ROADS.map((road) => ({
       points: road.points.map((point) => ({ x: point.x, z: point.z })),
       halfWidth: road.halfWidth,
+      main: true,
     }));
 
     for (const building of buildings) {
@@ -69,23 +28,47 @@ export function RoadNetwork({ buildings }: RoadNetworkProps) {
             { x: building.position.x, z: building.position.z },
           ],
           halfWidth: 1.1,
+          main: false,
         });
       }
     }
-    return roads.map((road) => ribbonGeometry(road.points, road.halfWidth));
+    return roads.map((road) => ({
+      main: road.main,
+      shoulder: createRoadRibbonGeometry(road.points, road.halfWidth + (road.main ? 0.85 : 0.42), 0.075),
+      surface: createRoadRibbonGeometry(road.points, road.halfWidth, 0.12),
+      marking: road.main ? createRoadRibbonGeometry(road.points, 0.075, 0.145) : null,
+    }));
   }, [buildings]);
 
   return (
     <group name="road-network">
-      {geometries.map((geometry, index) => (
-        <mesh key={geometry.uuid} geometry={geometry} receiveShadow userData={{ cameraObstacle: false }}>
-          <meshStandardMaterial
-            color={index === 0 ? '#4f5351' : '#5c5a50'}
-            roughness={0.98}
-            polygonOffset
-            polygonOffsetFactor={-1}
-          />
-        </mesh>
+      <mesh position={[0, terrainHeight(0, 0) + 0.09, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <circleGeometry args={[8.5, 40]} />
+        <meshStandardMaterial color="#777065" roughness={1} />
+      </mesh>
+      <mesh position={[0, terrainHeight(0, 0) + 0.125, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[6.2, 7.2, 40]} />
+        <meshStandardMaterial color="#9a8b70" roughness={1} />
+      </mesh>
+      {geometries.map((road, index) => (
+        <group key={road.surface.uuid}>
+          <mesh geometry={road.shoulder} receiveShadow userData={{ cameraObstacle: false }}>
+            <meshStandardMaterial color={road.main ? '#8c806c' : '#826f56'} roughness={1} />
+          </mesh>
+          <mesh geometry={road.surface} receiveShadow userData={{ cameraObstacle: false }}>
+            <meshStandardMaterial
+              color={road.main ? '#4c514f' : '#705f4c'}
+              roughness={0.98}
+              polygonOffset
+              polygonOffsetFactor={-1}
+            />
+          </mesh>
+          {road.marking !== null && (
+            <mesh geometry={road.marking} userData={{ cameraObstacle: false }}>
+              <meshStandardMaterial color={index % 2 === 0 ? '#d6c990' : '#cec59e'} roughness={0.9} />
+            </mesh>
+          )}
+        </group>
       ))}
     </group>
   );

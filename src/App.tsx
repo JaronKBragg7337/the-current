@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CameraMode, Selection } from './app/types';
 import { useWorldRuntime, type WorldRuntime } from './app/sharedWorldRuntime';
+import { BUILDING_FOOTPRINTS } from './simulation';
 import { CameraDock } from './ui/CameraDock';
 import { EventTimeline } from './ui/EventTimeline';
 import { ExternalSignals } from './ui/ExternalSignals';
@@ -50,6 +51,7 @@ declare global {
     };
     __CURRENT_TEST_API__?: {
       advanceDay: () => void;
+      selectEvidencePerson: () => string | null;
       selectFirstPerson: () => string | null;
       setCameraMode: (mode: CameraMode) => void;
     };
@@ -191,6 +193,23 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     if (projection === null) return;
     window.__CURRENT_TEST_API__ = {
       advanceDay: () => advanceSimulationDays(1),
+      selectEvidencePerson: () => {
+        const person = projection.people.reduce<(typeof projection.people)[number] | null>((best, candidate) => {
+          const clearance = (x: number, z: number) => projection.buildings.reduce((nearest, building) => {
+            if (building.type === 'road') return nearest;
+            const footprint = BUILDING_FOOTPRINTS[building.type];
+            const edgeDistance = Math.hypot(x - building.position.x, z - building.position.z)
+              - Math.hypot(footprint.width, footprint.depth) / 2;
+            return Math.min(nearest, edgeDistance);
+          }, Number.POSITIVE_INFINITY);
+          if (best === null) return candidate;
+          return clearance(candidate.position.x, candidate.position.z)
+            > clearance(best.position.x, best.position.z) ? candidate : best;
+        }, null);
+        if (person === null) return null;
+        setSelection({ kind: 'person', id: person.id });
+        return person.id;
+      },
       selectFirstPerson: () => {
         const person = projection.people[0];
         if (person === undefined) return null;

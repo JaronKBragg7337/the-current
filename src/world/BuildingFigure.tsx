@@ -1,10 +1,13 @@
 import type { ThreeEvent } from '@react-three/fiber';
-import { useMemo } from 'react';
-import { Color, DoubleSide } from 'three';
+import { useFrame } from '@react-three/fiber';
+import { useMemo, useRef } from 'react';
+import { BoxGeometry, Color, DoubleSide, Vector3, type BufferGeometry, type Group } from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { BUILDING_FOOTPRINTS, type BuildingProjection, type BuildingType, type ConstructionStage } from '../simulation';
 import { createBuildingWallShell } from './buildingShell';
-import { deterministicUnit, terrainHeight } from './terrain';
+import { ConfluenceAsset } from './ConfluenceKit';
+import { terrainHeight } from './terrain';
 
 interface BuildingFigureProps {
   building: BuildingProjection;
@@ -109,6 +112,23 @@ function renderFrame(width: number, depth: number, height: number) {
   );
 }
 
+function createCornerTrim(width: number, depth: number, wallHeight: number): BufferGeometry {
+  const parts = ([
+    [-width / 2 + 0.14, -depth / 2 + 0.14],
+    [width / 2 - 0.14, -depth / 2 + 0.14],
+    [-width / 2 + 0.14, depth / 2 - 0.14],
+    [width / 2 - 0.14, depth / 2 - 0.14],
+  ] as const).map(([x, z]) => {
+    const geometry = new BoxGeometry(0.26, wallHeight + 0.18, 0.26);
+    geometry.translate(x, wallHeight / 2 + 0.52, z);
+    return geometry;
+  });
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) part.dispose();
+  if (merged === null) throw new Error('Unable to merge building corner trim');
+  return merged;
+}
+
 function renderFarm(stage: number, progress: number) {
   const rows = Array.from({ length: 8 }, (_, index) => index);
   return (
@@ -137,6 +157,9 @@ function renderFarm(stage: number, progress: number) {
             <meshStandardMaterial color="#6b5139" roughness={0.95} />
           </mesh>
         </group>
+      )}
+      {stage >= 8 && (
+        <ConfluenceAsset name="Asset_FarmStand" position={[-4.8, 0, 3.55]} rotation={[0, Math.PI, 0]} scale={0.74} />
       )}
     </group>
   );
@@ -173,18 +196,68 @@ function renderWell(stage: number) {
   );
 }
 
+function renderFarBuilding(type: BuildingType, stage: number, style: BuildingStyle) {
+  if (type === 'farm') {
+    return (
+      <group>
+        <mesh position={[0, 0.08, 0]} receiveShadow><boxGeometry args={[15, 0.14, 11]} /><meshStandardMaterial color="#6c4f34" roughness={1} /></mesh>
+        {stage >= 3 && [-5.4, -1.8, 1.8, 5.4].map((x) => (
+          <mesh key={x} position={[x, 0.33, 0]}><boxGeometry args={[0.72, 0.48, 9.4]} /><meshStandardMaterial color="#b6a04b" roughness={1} /></mesh>
+        ))}
+      </group>
+    );
+  }
+  if (type === 'well') {
+    return (
+      <group>
+        {stage <= 1 && renderStakes(3.8, 3.8)}
+        {stage >= 2 && <mesh position={[0, 0.58, 0]}><cylinderGeometry args={[1.65, 1.85, 1.15, 10]} /><meshStandardMaterial color="#8d897b" roughness={0.92} /></mesh>}
+        {stage >= 5 && <mesh position={[0, 2.75, 0]} rotation={[0, Math.PI / 4, 0]}><coneGeometry args={[2.4, 1.3, 4]} /><meshStandardMaterial color="#74503a" roughness={0.92} /></mesh>}
+      </group>
+    );
+  }
+  return (
+    <group>
+      {stage <= 1 && renderStakes(style.width, style.depth)}
+      {stage >= 2 && <mesh position={[0, 0.28, 0]} receiveShadow><boxGeometry args={[style.width, 0.5, style.depth]} /><meshStandardMaterial color="#8c897c" roughness={0.96} /></mesh>}
+      {stage >= 3 && (
+        <mesh position={[0, style.wallHeight / 2 + 0.53, 0]}>
+          <boxGeometry args={[style.width, style.wallHeight, style.depth]} />
+          <meshStandardMaterial color={style.wall} roughness={0.9} wireframe={stage === 3} />
+        </mesh>
+      )}
+      {stage >= 5 && (
+        <mesh position={[0, style.wallHeight + 1.15, 0]} rotation={[0, Math.PI / 4, 0]} scale={[1, 1, style.depth / style.width]}>
+          <coneGeometry args={[style.width * 0.72, 1.65, 4]} />
+          <meshStandardMaterial color={style.roof} roughness={0.94} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 export function BuildingFigure({ building, selected, onSelect }: BuildingFigureProps) {
+  const detailRef = useRef<Group>(null);
+  const farRef = useRef<Group>(null);
   const style = STYLES[building.type];
   const stage = STAGE_RANK[building.stage];
   const ground = terrainHeight(building.position.x, building.position.z);
-  const rotation = useMemo(
-    () => (deterministicUnit(building.id) - 0.5) * 0.34,
-    [building.id],
-  );
+  const rotation = building.position.z > 0 ? Math.PI : 0;
   const wallShell = useMemo(
     () => createBuildingWallShell(style),
     [style],
   );
+  const cornerTrim = useMemo(
+    () => createCornerTrim(style.width, style.depth, style.wallHeight),
+    [style],
+  );
+  const worldPosition = useMemo(() => new Vector3(building.position.x, ground, building.position.z), [building.position.x, building.position.z, ground]);
+
+  useFrame(({ camera }) => {
+    const detailed = selected || camera.position.distanceToSquared(worldPosition) < 82 ** 2;
+    if (detailRef.current !== null) detailRef.current.visible = detailed;
+    if (farRef.current !== null) farRef.current.visible = !detailed;
+  });
 
   const handleSelect = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
@@ -208,11 +281,12 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
         </mesh>
       )}
 
-      {stage <= 1 && renderStakes(style.width, style.depth)}
-      {building.type === 'farm' && renderFarm(stage, building.progress)}
-      {building.type === 'well' && renderWell(stage)}
+      <group ref={detailRef}>
+        {stage <= 1 && renderStakes(style.width, style.depth)}
+        {building.type === 'farm' && renderFarm(stage, building.progress)}
+        {building.type === 'well' && renderWell(stage)}
 
-      {building.type !== 'farm' && building.type !== 'well' && (
+        {building.type !== 'farm' && building.type !== 'well' && (
         <group>
           {stage >= 1 && (
             <mesh position={[0, 0.06, 0]} receiveShadow>
@@ -247,6 +321,27 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
               ))}
             </group>
           )}
+          {stage >= 4 && (
+            <group position={[0, 0, style.depth / 2 + 0.16]}>
+              <mesh position={[0, 1.32, 0]}>
+                <boxGeometry args={[1.08, 2.18, 0.16]} />
+                <meshStandardMaterial color="#70543c" roughness={0.92} />
+              </mesh>
+              <mesh position={[0.34, 1.29, 0.1]}>
+                <sphereGeometry args={[0.055, 8, 6]} />
+                <meshStandardMaterial color="#d0ae61" metalness={0.4} roughness={0.5} />
+              </mesh>
+              <mesh position={[0, 0.18, 0.52]} receiveShadow>
+                <boxGeometry args={[1.75, 0.22, 1.35]} />
+                <meshStandardMaterial color="#88785f" roughness={0.98} />
+              </mesh>
+            </group>
+          )}
+          {stage >= 4 && (
+            <mesh geometry={cornerTrim}>
+              <meshStandardMaterial color="#8f7658" roughness={0.94} />
+            </mesh>
+          )}
           {stage >= 5 && (
             <group position={[0, style.wallHeight + 0.57, 0]} userData={{ cameraObstacle: true }}>
               <mesh position={[-style.width * 0.245, 0.65, 0]} rotation={[0, 0, 0.55]} castShadow>
@@ -257,6 +352,11 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
                 <boxGeometry args={[style.width * 0.62, 0.34, style.depth + 0.7]} />
                 <meshStandardMaterial color={style.roof} roughness={0.94} />
               </mesh>
+            </group>
+          )}
+          {stage >= 5 && ['house', 'clinic', 'school', 'council-hall'].includes(building.type) && (
+            <group position={[style.width * 0.28, style.wallHeight + 1.15, -style.depth * 0.2]}>
+              <mesh castShadow><boxGeometry args={[0.68, 2.05, 0.76]} /><meshStandardMaterial color="#866b50" roughness={0.96} /></mesh>
             </group>
           )}
           {stage >= 6 && (
@@ -299,8 +399,15 @@ export function BuildingFigure({ building, selected, onSelect }: BuildingFigureP
               </mesh>
             </group>
           )}
+          {stage >= 8 && ['clinic', 'council-hall', 'school'].includes(building.type) && (
+            <ConfluenceAsset name="Asset_Bench" position={[-style.width * 0.27, 0.42, style.depth / 2 + 0.55]} rotation={[0, 0, 0]} scale={0.72} />
+          )}
         </group>
-      )}
+        )}
+      </group>
+      <group ref={farRef} visible={false}>
+        {renderFarBuilding(building.type, stage, style)}
+      </group>
     </group>
   );
 }
