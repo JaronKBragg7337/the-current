@@ -14,7 +14,7 @@ The observer has no avatar and cannot steer NPCs.
 - `3`: first-person view through the selected NPC.
 - `Space`: pause or resume simulation time.
 - `[` / `]`: decrease or increase simulation speed.
-- `Escape`: close a panel or return toward orbital view.
+- `Escape`: dismiss the active details or information panel without cancelling an active follow or first-person view.
 - `H`: toggle the interface.
 
 ## Touch
@@ -24,5 +24,7 @@ The observer has no avatar and cannot steer NPCs.
 - Pinch: zoom.
 - Tap: select.
 - Camera-mode buttons replace keyboard shortcuts.
+- History, Influence, Signals, and System remain available in the compact world toolbar.
+- Details in the camera dock reopens the selected entity card after it has been dismissed.
 
-Camera modes are observational. In follow and first-person views the person continues its autonomous task and route.
+Orbital panning keeps the chosen roaming target until a camera-mode transition. Camera modes are observational. In follow and first-person views the person continues its autonomous task and route, and dismissing the details card does not cancel the view.

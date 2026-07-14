@@ -138,10 +138,10 @@ export function SpectatorCamera({ mode, selectedPerson, focusPosition, onDiagnos
     } else {
       controls.enabled = true;
       controls.enablePan = true;
-      if (focusPosition === null) target.set(0, 0.4, 0);
-      else target.set(focusPosition[0], focusPosition[1], focusPosition[2]);
-      controls.target.lerp(target, 1 - Math.exp(-delta * 4.2));
       if (transitionRef.current < 1) {
+        if (focusPosition === null) target.set(0, 0.4, 0);
+        else target.set(focusPosition[0], focusPosition[1], focusPosition[2]);
+        controls.target.lerp(target, 1 - Math.exp(-delta * 4.2));
         desired.copy(target).add(orbitalOffset);
         camera.position.lerp(desired, 1 - Math.exp(-delta * 3.3));
       }

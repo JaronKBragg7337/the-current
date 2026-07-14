@@ -104,8 +104,8 @@ export function TopBar({
       <nav className="panel-controls" aria-label="World panels">
         <button type="button" className={panelsOpen.history ? 'active' : ''} onClick={() => onTogglePanel('history')}>History</button>
         <button type="button" className={panelsOpen.interventions ? 'active' : ''} onClick={() => onTogglePanel('interventions')}>Influence</button>
-        <button type="button" className={panelsOpen.signals ? 'active desktop-only' : 'desktop-only'} onClick={() => onTogglePanel('signals')}>Signals</button>
-        <button type="button" className={panelsOpen.metrics ? 'active desktop-only' : 'desktop-only'} onClick={() => onTogglePanel('metrics')}>System</button>
+        <button type="button" className={panelsOpen.signals ? 'active' : ''} onClick={() => onTogglePanel('signals')}>Signals</button>
+        <button type="button" className={panelsOpen.metrics ? 'active' : ''} onClick={() => onTogglePanel('metrics')}>System</button>
         {liveWorld ? (
           <div className="save-menu">
             <button type="button" className="compact-button" onClick={onExport} title="Download the current shared world snapshot">↓</button>
