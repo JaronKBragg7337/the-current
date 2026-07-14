@@ -835,6 +835,10 @@ export class CurrentSimulation {
       ? 0
       : this.rng.int(this.stateValue.config.entrantAge.min, this.stateValue.config.entrantAge.max);
     const birthDay = day - ageAtEntry;
+    // Lifespan is measured from birth, not arrival, so an immigrant who walks in
+    // already aged shares the same human ceiling as anyone born here. A drawn
+    // lifespan (65-100) always exceeds the maximum entry age (32), so no entrant
+    // arrives already past their natural death day.
     const lifespan = this.rng.int(this.stateValue.config.lifespan.min, this.stateValue.config.lifespan.max);
     const profile = origin === 'born' ? 'unskilled-generalist' : this.rng.pick(EMERGENCE_PROFILES);
     const traits = this.randomTraits();
@@ -860,7 +864,7 @@ export class CurrentSimulation {
       biologicalSex,
       birthDay,
       arrivalDay: day,
-      naturalDeathDay: day + lifespan,
+      naturalDeathDay: birthDay + lifespan,
       alive: true,
       deathDay: null,
       deathCause: null,
