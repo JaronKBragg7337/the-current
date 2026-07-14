@@ -55,8 +55,10 @@ The fixed 150-day seed finished with 175 living people, 12 births, 157 deaths, 2
 - Drag to orbit; right-drag or Shift-drag to pan; wheel or pinch to zoom.
 - Click or tap an entity to select it; double-click an NPC to follow.
 - `1`, `2`, `3`: orbital, third-person, and first-person spectator views.
+- History, Influence, Signals, and System panels are available from the world toolbar on desktop and touch layouts.
+- Closing an entity's Details card leaves its spectator camera active; use Details in the camera dock to reopen it.
 - `Space`: pause/resume. `[` / `]`: change speed.
-- `H`: hide/show UI. `Escape`: close a panel or return toward orbit.
+- `H`: hide/show UI. `Escape`: dismiss the active details or information panel.
 
 Camera modes remain observational. Complete desktop and touch controls are in [docs/CONTROLS.md](docs/CONTROLS.md).
 

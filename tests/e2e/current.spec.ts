@@ -172,11 +172,21 @@ test('NPC selection supports settled orbital, follow, and first-person spectator
   const orbital = await enterWorld(page);
   const personId = await selectFirstPerson(page);
   expect((await getDiagnostics(page)).selected).toEqual({ kind: 'person', id: personId });
+  const selectionPanel = page.getByRole('complementary', { name: 'Selected world entity' });
+  await expect(selectionPanel).toBeVisible();
 
   await setCameraMode(page, 'follow');
   const follow = await waitForSettledCamera(page, 'follow', orbital.cameraPosition);
   expect(follow.cameraMode).toBe('follow');
   expect(follow.selected).toEqual({ kind: 'person', id: personId });
+  await expect(selectionPanel).toHaveCount(0);
+
+  await activateVisibleButton(page.getByRole('button', { name: 'Selected entity details' }));
+  await expect(selectionPanel).toBeVisible();
+  await activateVisibleButton(page.getByRole('button', { name: 'Close selection panel' }));
+  await expect(selectionPanel).toHaveCount(0);
+  expect((await getDiagnostics(page)).cameraMode).toBe('follow');
+  expect((await getDiagnostics(page)).selected).toEqual({ kind: 'person', id: personId });
 
   await setCameraMode(page, 'first-person');
   const firstPerson = await waitForSettledCamera(page, 'first-person', follow.cameraPosition);
@@ -214,6 +224,10 @@ test('mobile Chromium keeps the world and spectator controls inside the viewport
   await expectLocatorInsideViewport(page, page.locator('.world-canvas canvas'));
   await expectLocatorInsideViewport(page, page.getByRole('navigation', { name: 'Spectator camera' }));
   await expectLocatorInsideViewport(page, page.locator('header.top-bar'));
-  await expect(page.getByRole('button', { name: 'Signals', exact: true })).toBeHidden();
+  for (const panelName of ['History', 'Influence', 'Signals', 'System']) {
+    const panelButton = page.getByRole('button', { name: panelName, exact: true });
+    await expect(panelButton).toBeVisible();
+    await expectLocatorInsideViewport(page, panelButton);
+  }
   await expect(page.getByRole('button', { name: 'Follow' })).toBeDisabled();
 });

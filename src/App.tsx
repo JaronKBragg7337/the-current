@@ -71,6 +71,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
   const importWorld = runtime.importWorld;
   const advanceSimulationDays = runtime.advanceDays;
   const [selection, setSelection] = useState<Selection>(null);
+  const [selectionPanelOpen, setSelectionPanelOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbital');
   const [panels, setPanels] = useState<PanelState>({
     history: false,
@@ -113,6 +114,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
         : vehicles.some((vehicle) => vehicle.id === selection.id);
     if (!stillExists) {
       setSelection(null);
+      setSelectionPanelOpen(false);
       setCameraMode('orbital');
     }
   }, [projection, selection, vehicles]);
@@ -120,7 +122,17 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
   const handleCameraMode = useCallback((mode: CameraMode): void => {
     if ((mode === 'follow' || mode === 'first-person') && selection?.kind !== 'person') return;
     setCameraMode(mode);
+    if (mode === 'follow' || mode === 'first-person') setSelectionPanelOpen(false);
   }, [selection]);
+
+  const handleSelection = useCallback((nextSelection: Selection): void => {
+    if (nextSelection === null && cameraMode !== 'orbital') {
+      setSelectionPanelOpen(false);
+      return;
+    }
+    setSelection(nextSelection);
+    setSelectionPanelOpen(nextSelection !== null);
+  }, [cameraMode]);
 
   const changeSpeedStep = useCallback((direction: -1 | 1): void => {
     const currentIndex = SPEEDS.findIndex((value) => value === runtime.speed);
@@ -157,9 +169,10 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
           setInterfaceHidden((hidden) => !hidden);
           break;
         case 'escape':
-          if (selection !== null) {
+          if (selectionPanelOpen) {
+            setSelectionPanelOpen(false);
+          } else if (selection !== null && cameraMode === 'orbital') {
             setSelection(null);
-            setCameraMode('orbital');
           } else {
             setPanels({ history: false, interventions: false, metrics: false, signals: false });
           }
@@ -168,7 +181,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     };
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, [changeSpeedStep, selection, toggleSimulationPause]);
+  }, [cameraMode, changeSpeedStep, selection, selectionPanelOpen, toggleSimulationPause]);
 
   useEffect(() => {
     if (projection === null) return;
@@ -208,12 +221,14 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
         }, null);
         if (person === null) return null;
         setSelection({ kind: 'person', id: person.id });
+        setSelectionPanelOpen(true);
         return person.id;
       },
       selectFirstPerson: () => {
         const person = projection.people[0];
         if (person === undefined) return null;
         setSelection({ kind: 'person', id: person.id });
+        setSelectionPanelOpen(true);
         return person.id;
       },
       setCameraMode: (mode) => handleCameraMode(mode),
@@ -240,6 +255,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     } else if (vehicles.some((vehicle) => vehicle.id === entityId)) {
       setSelection({ kind: 'vehicle', id: entityId });
     }
+    setSelectionPanelOpen(true);
   }, [projection, vehicles]);
 
   const handleImportFile = useCallback(async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -255,6 +271,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
 
       await importWorld(await file.text());
       setSelection(null);
+      setSelectionPanelOpen(false);
       setCameraMode('orbital');
     } catch (error) {
       const detail = error instanceof Error && error.message.trim() !== ''
@@ -275,7 +292,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
         vehicles={vehicles}
         selection={selection}
         cameraMode={cameraMode}
-        onSelect={setSelection}
+        onSelect={handleSelection}
         onCameraModeChange={handleCameraMode}
         onCameraDiagnostics={setCameraDiagnostics}
         onDiagnostics={handleDiagnostics}
@@ -305,7 +322,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
           />
           <ResourceStrip resources={projection.resources} metrics={projection.metrics} />
           <SelectionPanel
-            selection={selection}
+            selection={selectionPanelOpen ? selection : null}
             person={selectedPerson}
             building={selectedBuilding}
             vehicle={selectedVehicle}
@@ -313,10 +330,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
             events={projection.recentEvents}
             cameraMode={cameraMode}
             onCameraModeChange={handleCameraMode}
-            onClose={() => {
-              setSelection(null);
-              setCameraMode('orbital');
-            }}
+            onClose={() => setSelectionPanelOpen(false)}
           />
           {panels.history && (
             <EventTimeline
@@ -363,8 +377,11 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
       <CameraDock
         mode={cameraMode}
         hasSelectedPerson={selectedPerson !== null}
+        hasSelection={selection !== null}
+        selectionPanelOpen={selectionPanelOpen}
         interfaceHidden={interfaceHidden}
         onModeChange={handleCameraMode}
+        onToggleSelectionPanel={() => setSelectionPanelOpen((open) => !open)}
         onToggleInterface={() => setInterfaceHidden((hidden) => !hidden)}
       />
       {(importError ?? runtime.error) !== null && (

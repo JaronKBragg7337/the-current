@@ -88,9 +88,9 @@ NPC appearance colors and body variation are deterministically derived from IDs 
 
 ## Spectator cameras
 
-The camera state machine supports orbital, third-person follow, and view-only first-person modes. Transitions damp toward their target rather than teleport. Follow/first-person track authoritative projected positions and cannot emit movement commands. Collision probes terrain and marked obstacle geometry, handles a target inside a building, and restores the orbital field of view after leaving first person.
+The camera state machine supports orbital, third-person follow, and view-only first-person modes. Transitions damp toward their target rather than teleport. Once an orbital transition settles, its target belongs to OrbitControls so desktop and touch panning are not pulled back to the settlement center. Follow/first-person track authoritative projected positions and cannot emit movement commands. Collision probes terrain and marked obstacle geometry, handles a target inside a building, and restores the orbital field of view after leaving first person.
 
-Selection and camera state are presentation concerns and are excluded from world snapshots. Inspection requests return the full current authoritative person record; the selected person's inspection refreshes as projections advance.
+Selection, details-card visibility, and camera state are independent presentation concerns and are excluded from world snapshots. Dismissing the card therefore leaves the selected subject and active follow/first-person camera intact; the camera dock can reopen Details. Inspection requests return the full current authoritative person record; the selected person's inspection refreshes as projections advance.
 
 ## Deployment isolation
 
