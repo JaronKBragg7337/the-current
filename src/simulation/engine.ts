@@ -231,6 +231,10 @@ const BASE_PRICES: ResourceLedger = {
 const EMPTY_INPUTS: DayInputs = { signals: [], interventions: [] };
 
 const TASK_SITE_RADIUS_METERS = 3;
+// A well shaft only supports so many people drawing at once; beyond this the
+// extra crowd waits without adding output.
+const WELL_HAULERS_PER_WELL = 26;
+const WATER_HAULED_PER_HAULER = 5;
 const ENCOUNTER_RADIUS_METERS = 5.5;
 const SHARED_CONTEXT_RADIUS_METERS = 4;
 const DAILY_TRAVEL_METERS = 140;
@@ -1203,6 +1207,9 @@ export class CurrentSimulation {
 
   private chooseTasksAndDestinations(): void {
     const council = this.primaryInstitution();
+    // With empty stores, standing at the market feeds nobody; hungry people
+    // stay available for the work that restocks it instead.
+    const foodAvailable = this.stateValue.settlement.resources.food >= 1;
     for (const person of this.alivePeople()) {
       let task: TaskType;
       let reason: string;
@@ -1213,11 +1220,11 @@ export class CurrentSimulation {
         task = person.needs.social < 45 ? 'socialize' : 'learn';
         reason = task === 'learn' ? 'Learning from family and the settlement school.' : 'Seeking play and family contact.';
       } else if (person.lifeStage === 'adolescent') {
-        task = person.needs.food < 35 ? 'eat' : 'learn';
+        task = person.needs.food < 35 && foodAvailable ? 'eat' : 'learn';
         reason = task === 'eat' ? 'Hunger takes priority.' : 'Building skills before adult work.';
       } else if (person.needs.water < 30) {
         task = 'fetch-water'; reason = 'Thirst is an immediate survival pressure.';
-      } else if (person.needs.food < 32) {
+      } else if (person.needs.food < 32 && foodAvailable) {
         task = 'eat'; reason = 'Food need is more urgent than paid work.';
       } else if (person.health < 45 || person.needs.health < 40) {
         task = 'heal'; reason = 'Poor health makes treatment the highest-value choice.';
@@ -1302,6 +1309,14 @@ export class CurrentSimulation {
     economy.production.tools += workshopCount * 1.4;
 
     for (const person of this.alivePeople()) person.lastTaskSuccess = false;
+    // Fetching water is real labor, not queueing: every adult who reached the
+    // well hauls water into the settlement stock, so a thirst crisis raises
+    // supply instead of freezing the town around a dry well.
+    const haulers = this.alivePeople().filter((person) =>
+      person.currentTask === 'fetch-water' && isAdult(person) && this.isAtTaskWorksite(person));
+    const activeHaulers = haulers.slice(0, wellCount * WELL_HAULERS_PER_WELL);
+    for (const person of activeHaulers) person.lastTaskSuccess = true;
+    economy.production.water += activeHaulers.length * WATER_HAULED_PER_HAULER * modifiers.waterYield;
     for (const person of this.alivePeople()) {
       if (!isAdult(person) || !person.employed || !this.canPerformProductiveTask(person) || !this.isAtTaskWorksite(person)) continue;
       const skillDomain = OCCUPATION_SKILL[person.occupation];
@@ -1680,11 +1695,11 @@ export class CurrentSimulation {
     const queuedTypes = new Set(active.map((building) => building.type));
     let type: BuildingType | null = null;
     if (this.foodReserveDays() < this.stateValue.config.construction.foodReserveTriggerDays && !queuedTypes.has('farm')) type = 'farm';
-    else if (housingRatio > this.stateValue.config.construction.housingTriggerRatio) type = 'house';
+    else if (housingRatio > this.stateValue.config.construction.housingTriggerRatio && !queuedTypes.has('house')) type = 'house';
     else if (this.waterReserveDays() < 5 && !queuedTypes.has('well')) type = 'well';
+    else if (alive >= 45 && this.energyReserveDays() < 3 && this.completeBuildings().filter((building) => building.type === 'power-station').length < Math.ceil(alive / 70) && !queuedTypes.has('power-station')) type = 'power-station';
     else if (alive >= 55 && this.completeBuildings().filter((building) => building.type === 'school').length < 2 && !queuedTypes.has('school')) type = 'school';
     else if (alive >= 70 && this.completeBuildings().filter((building) => building.type === 'clinic').length < 2 && !queuedTypes.has('clinic')) type = 'clinic';
-    else if (alive >= 80 && this.completeBuildings().filter((building) => building.type === 'power-station').length < 1 && !queuedTypes.has('power-station')) type = 'power-station';
     if (type === null) return;
     const local = deterministicStream(this.streamSeed(), 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
     const position = findBuildingSite(local, type, sortedRecordValues(this.stateValue.buildings));
@@ -2563,6 +2578,11 @@ export class CurrentSimulation {
   private waterReserveDays(): number {
     const demand = this.alivePeople().reduce((sum, person) => sum + (isAdult(person) ? 1 : this.stateValue.config.needs.childConsumptionScale), 0) * this.stateValue.config.needs.waterPerAdult;
     return demand <= 0 ? 999 : this.stateValue.settlement.resources.water / demand;
+  }
+
+  private energyReserveDays(): number {
+    const demand = this.alivePeople().reduce((sum, person) => sum + (isAdult(person) ? 1 : this.stateValue.config.needs.childConsumptionScale), 0) * this.stateValue.config.needs.energyPerAdult;
+    return demand <= 0 ? 999 : this.stateValue.settlement.resources.energy / demand;
   }
 
   private visibleHeight(person: Person): number {
