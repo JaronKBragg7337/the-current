@@ -139,6 +139,10 @@ test('bundled external signals load without third-party requests and enter histo
 
   const persistedInputs = await readPersistedExternalInputs(page);
   expect(persistedInputs.some((input) => input.kind === 'signal')).toBe(true);
+  // Signals are recorded on their queued day and become effective on the
+  // following day. Cross both deterministic boundaries before asserting the
+  // resulting history event.
+  await advanceOneDay(page);
   await advanceOneDay(page);
   await expect.poll(
     async () => (await readPersistedEventTypes(page)).includes('signal-received'),
