@@ -69,7 +69,15 @@ export function SelectionPanel({
             <div><dt>Health</dt><dd>{Math.round(person.health)}%</dd></div>
             {inspectedPerson !== null && inspectedPerson.id === person.id && (
               <>
-                <div><dt>Age</dt><dd>{inspectedPerson.ageDays} world days</dd></div>
+                <div>
+                  <dt>Age</dt>
+                  <dd>
+                    {inspectedPerson.ageDays} days
+                    {inspectedPerson.origin === 'born'
+                      ? ' (born in the settlement)'
+                      : ` (arrived aged ${inspectedPerson.arrivalDay - inspectedPerson.birthDay})`}
+                  </dd>
+                </div>
                 <div><dt>Money</dt><dd>¤{inspectedPerson.wealth.toFixed(1)}</dd></div>
                 <div><dt>Children</dt><dd>{inspectedPerson.childrenIds.length}</dd></div>
                 <div><dt>Followers</dt><dd>{inspectedPerson.followersIds.length}</dd></div>
