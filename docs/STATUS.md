@@ -1,10 +1,10 @@
 # Implementation status
 
-Updated 2026-07-13. Labels mean **verified**, **partial**, or **unimplemented**. A type, interface, visual prop, or documentation paragraph is not counted as a working system by itself.
+Updated 2026-07-15. Labels mean **verified**, **partial**, or **unimplemented**. A type, interface, visual prop, or documentation paragraph is not counted as a working system by itself.
 
 ## Checkpoint summary
 
-The Current has passed its first functional population milestone as a real deterministic simulation and a navigable Three.js spectator application. A fixed 150-day run and a separate 500-day endurance run both passed 23/23 invariants, exact day-by-day replay, and snapshot restoration. The first serious visual pass now adds a reproducible Blender-authored world kit, proportioned citizens, construction-aware building tiers, authoritative road ribbons, visible resource yards, and stronger settlement assembly without changing simulation authority. The browser has been exercised with a real module worker, IndexedDB persistence, selection, all three camera modes, a causal intervention, and exact reload of the saved day-three digest.
+The Current has passed its first functional population milestone as a real deterministic simulation and a navigable Three.js spectator application. The current engine `0.2.0` fixed 150-day run passed 24/24 invariants, exact day-by-day replay, and snapshot restoration; the committed engine `0.1.0` 500-day run remains historical endurance evidence. The world kit provides proportioned citizens, construction-aware building tiers, authoritative road ribbons, visible resource yards, and stronger settlement assembly without changing simulation authority. The browser has been exercised with a real module worker, IndexedDB persistence, selection, all three camera modes, a causal intervention, environmental inspection, and exact reload of a saved state.
 
 This is still an early civilization, not the complete master specification. It has one settlement and several causal subsystems, but not yet the breadth or depth of autonomous firms, institutions, transport, law, culture, conflict, or multi-settlement history required by the final concept.
 
@@ -16,8 +16,8 @@ This is still an early civilization, not the complete master specification. It h
 | Secret-safe repository baseline | verified | `.gitignore`, `SECURITY.md`, no credentials required at runtime |
 | Authoritative specification | verified | `docs/MASTER_SPECIFICATION.md` |
 | Dependency, data, and asset research | verified | Official-source inventories in `docs/LICENSES.md`, `docs/DATA_SOURCES.md`, and `docs/ASSETS.md`; the incorporated runtime kit is project-authored and tracked in `assets/project-assets.json` |
-| Deterministic population/lifecycle loop | verified | 76 passing tests plus 150- and 500-day reference reports |
-| Seed replay and snapshot roundtrip | verified | Exact digests `f13e5fe87589ffc3` and `c54644b90116daa4`; 23/23 checks in each report |
+| Deterministic population/lifecycle loop | verified | 98 passing tests plus current 150-day and historical 500-day reports |
+| Seed replay and snapshot roundtrip | verified | Engine `0.2.0` digest `8bd8572d73878c03`; exact 150-day replay, midpoint restore, and 24/24 checks |
 | Worker isolation | verified | Module worker exercised in browser; in-process startup fallback and structured worker errors have tests |
 | Local persistence | verified | IndexedDB autosave, retention, export/import, input records, restore, and day-three browser reload |
 | Three.js spectator world | verified | WebGL render, selection, orbital/follow/first-person transitions, collision handling, distance tiers, visible economy, screenshots |
@@ -41,7 +41,19 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 | One shared authoritative world | verified | Supabase-hosted: `the-current-tick` edge function advances the world at a fixed pace (1 world day per real hour) with cryptographic entropy per day; world row publicly readable, entropy audit table service-role only; cron every 10 minutes; world created at day 0, digest `c9e11dc317f318a5` |
 | Shared spectator clients | verified locally | Production clients default to polling the shared world; time controls, save, and import are replaced by a LIVE badge; `?world=local` opts into a private local world; dev/tests default to local |
 | Shared-world interventions | unimplemented | Spectator clients cannot yet submit interventions to the shared world; requires a server-side intervention queue with budgets (next action) |
-| Pre-existing Windows-local test failures | known issue | `App.inspection.test.tsx` and `ObserverInterventions.test.tsx` fail locally on Windows with `act is not a function` — confirmed pre-existing on a clean checkout (git stash test); CI on Linux runs them green |
+| Windows-local test execution | verified | The former `act is not a function` failures no longer reproduce; all 98 tests pass locally on Windows |
+
+## 2026-07-15 session: local environmental feedback
+
+| Area | Status | Evidence and boundary |
+| --- | --- | --- |
+| Building-centered environment | verified | Every site persists bounded fertility, water quality, contamination, and local waste; updates and neighbor diffusion are deterministic and projection-visible |
+| Causal facility operation | verified | Farms, workshops, and power stations consume declared scarce inputs with shared per-resource ratios; farm/well/industrial output responds to the site's condition |
+| Drinking-water quality | verified | Well output is quality-weighted into stored water and affects resident health plus future water/health pressure |
+| Physical sanitation | verified | Laborers choose a named waste site, must arrive and succeed, use energy and durable transport capacity, remove only local waste, and emit cleanup history |
+| Environmental inspection | verified | System metrics, exact building facts, and a selectable instanced soil/water/contamination layer expose authoritative values without changing them |
+| Save compatibility | verified | Digest-first schema-1 backfill localizes legacy global waste and adds missing water/environment fields deterministically; resumed futures match |
+| Ecological breadth | partial | Facility-centered patches model local feedback but not continuous terrain, watersheds, weather, species, pathogens, sewage networks, or material-specific toxins |
 
 ## Systems that function
 
@@ -54,6 +66,7 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 - Households, homes, staged construction using labor/materials, death-driven inheritance, and timestamped memories/events.
 - Institutions, periodic leadership selection, domain-specific influence, persistent follower associations, rare polymaths, breakthrough attempts, progress, failure, and adoption.
 - Normalized signals and help/spice/sabotage interventions enter the normal causal loop rather than editing outcomes directly.
+- Local soil, groundwater, contamination, waste generation/spread, site-specific sanitation, mixed drinking-water quality, facility inputs, and exposure-driven health pressure.
 
 ### Runtime and presentation
 
@@ -76,7 +89,8 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 - **Navigation and transport:** authoritative people move toward destinations with a 140-metre-per-world-day straight-line budget. Rendered roads are not their navigation graph. Vehicles, cargo labels, and route progress are derived presentation, not authoritative entities or inventories.
 - **Appearance, animation, and mortality:** people have proportioned bodies, persistent ID-derived variation, occupation tools, simple idle/walk/work/social/carry poses, age scaling, posture, and elder hair, but renderer-derived appearance is not saved or inherited. There are no canonical rigged humanoids, retargeted clips, voice/audio, bodies, funerals, or crowd occlusion/perception effects.
 - **History:** events, memories, snapshots, ownership, and recent-event inspection exist. The UI does not yet expose complete timeline replay, building provenance, descendants, durable biographies, or post-hoc significance classification.
-- **Persistence resilience:** unsupported worker construction falls back in-process; asynchronous worker crashes surface an error and reject bounded pending waits. Imports gate host mutations, pause at a correlated queue barrier, drain prior writes, and then load. An already-running worker is not automatically replaced after a crash. Schema version 1 is validated; migration from future/older schemas is not implemented.
+- **Persistence resilience:** unsupported worker construction falls back in-process; asynchronous worker crashes surface an error and reject bounded pending waits. Imports gate host mutations, pause at a correlated queue barrier, drain prior writes, and then load. An already-running worker is not automatically replaced after a crash. Schema version 1 is validated; additive legacy schema-1 environment fields are migrated after digest verification, while unsupported schema versions are not.
+- **Environment:** the working model uses building-centered land patches. It does not yet model a continuous terrain grid, watershed flow, rainfall, seasons, species, sewage pipes, pathogens, material-specific emissions, or soil ownership.
 - **Observer authority:** intervention effects are authoritative simulation inputs, but energy/cooldowns are localStorage UI limits that a viewer can clear. They are not shared, voted, authenticated, or server-authoritative.
 - **Real-world information:** offline and live ingestion tools normalize data successfully, but the browser uses a reviewed same-origin snapshot. There is no scheduled collector, multi-source production corroboration service, signed feed, or automatic missed-time ingest.
 
@@ -84,7 +98,7 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 
 - Multiple settlements, migration between them, settlement founding, colonial expansion, and distinct local interpretations of the same signal.
 - Autonomous businesses, banks, credit/debt inheritance, land markets, taxes, public budgets, monopolies, and transport logistics.
-- Laws, customs, ideologies, religions, social movements, crime, policing, war, organized violence, disease transmission, sanitation, and environmental damage.
+- Laws, customs, ideologies, religions, social movements, crime, policing, war, organized violence, and person-to-person disease transmission.
 - Authoritative person pathfinding/navmesh, personal authoritative tools and vehicles, inventories, goods delivery, queues, traffic failures, and industrial processes. Road rendering and presentation vehicles now share the authoritative road corridors, and aggregate resource tiers are visible.
 - Schools as scheduled learning institutions, language/culture transmission, communication networks, journalism, propaganda, voting, protests, and public ceremonies.
 - Weather, daylight/night perception, sound, accessible full interiors, detailed construction labor, full sitting/injury/death clips, and a production canonical rigged character library.

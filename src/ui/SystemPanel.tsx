@@ -36,6 +36,16 @@ export function SystemPanel({ metrics, host, render, digest, onClose }: SystemPa
         <p><span>Inheritances</span><strong>¤{metrics.inheritedValue.toFixed(0)}</strong></p>
         <p><span>Breakthroughs adopted</span><strong>{metrics.breakthroughAdoptions}</strong></p>
       </section>
+      <section className="population-readout environment-readout">
+        <h3>Environmental loop</h3>
+        <p><span>Farm soil fertility</span><strong>{metrics.averageFertility.toFixed(1)}%</strong></p>
+        <p><span>Well water quality</span><strong>{metrics.averageWaterQuality.toFixed(1)}%</strong></p>
+        <p><span>Stored drinking water</span><strong>{metrics.drinkingWaterQuality.toFixed(1)}%</strong></p>
+        <p><span>Site contamination</span><strong>{metrics.averageContamination.toFixed(1)}%</strong></p>
+        <p><span>Stored waste</span><strong>{metrics.storedWaste.toFixed(1)}</strong></p>
+        <p><span>Waste created today</span><strong>{metrics.wasteCreatedLastDay.toFixed(1)}</strong></p>
+        <p><span>Waste removed today</span><strong>{metrics.wasteRemovedLastDay.toFixed(1)}</strong></p>
+      </section>
       <p className="digest-line"><span>State digest</span><code>{digest}</code></p>
     </aside>
   );

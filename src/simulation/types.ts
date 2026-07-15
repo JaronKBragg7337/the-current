@@ -1,5 +1,5 @@
 export const SIMULATION_SCHEMA_VERSION = 1 as const;
-export const SIMULATION_ENGINE_VERSION = '0.1.0' as const;
+export const SIMULATION_ENGINE_VERSION = '0.2.0' as const;
 
 export type EntityId = string;
 export type PersonId = EntityId;
@@ -396,6 +396,16 @@ export interface BuildingHistoryEntry {
   personIds: PersonId[];
 }
 
+export type EnvironmentalStatus = 'healthy' | 'stressed' | 'hazardous';
+
+export interface EnvironmentalCondition {
+  fertility: number;
+  waterQuality: number;
+  contamination: number;
+  wasteLoad: number;
+  status: EnvironmentalStatus;
+}
+
 export interface Building {
   id: BuildingId;
   type: BuildingType;
@@ -415,6 +425,7 @@ export interface Building {
   deliveredMaterials: MaterialRequirement;
   capacity: number;
   condition: number;
+  environment: EnvironmentalCondition;
   occupiedByIds: EntityId[];
   history: BuildingHistoryEntry[];
 }
@@ -539,6 +550,7 @@ export interface SettlementDailyEconomy {
   wagesPaid: number;
   valueProduced: number;
   wasteCreated: number;
+  wasteRemoved: number;
 }
 
 export interface Settlement {
@@ -550,6 +562,7 @@ export interface Settlement {
   treasury: number;
   debt: number;
   waste: number;
+  drinkingWaterQuality: number;
   safety: number;
   publicTrust: number;
   pressure: PressureState;
@@ -575,6 +588,8 @@ export type SimulationEventType =
   | 'employment-changed'
   | 'encounter'
   | 'entropy-mixed'
+  | 'environment-degraded'
+  | 'environment-recovered'
   | 'inheritance'
   | 'institution-founded'
   | 'intervention-resolved'
@@ -583,6 +598,7 @@ export type SimulationEventType =
   | 'partnership-formed'
   | 'pregnancy'
   | 'relationship-changed'
+  | 'sanitation-cleanup'
   | 'signal-received'
   | 'shortage';
 
@@ -720,6 +736,16 @@ export interface SimulationConfig {
     housingTriggerRatio: number;
     foodReserveTriggerDays: number;
   };
+  environment: {
+    farmWaterPerDay: number;
+    farmToolsPerDay: number;
+    workshopEnergyPerDay: number;
+    powerToolsPerDay: number;
+    sanitationPerWorker: number;
+    sanitationEnergyPerWaste: number;
+    wastePerFoodConsumed: number;
+    wastePerToolProduced: number;
+  };
   leadership: {
     electionIntervalDays: number;
     minimumFollowers: number;
@@ -820,6 +846,13 @@ export interface SimulationMetrics {
   resolvedInterventions: number;
   eventCount: number;
   saveApproximateBytes: number;
+  averageFertility: number;
+  averageWaterQuality: number;
+  averageContamination: number;
+  drinkingWaterQuality: number;
+  storedWaste: number;
+  wasteCreatedLastDay: number;
+  wasteRemovedLastDay: number;
 }
 
 export interface PersonProjection {
@@ -851,6 +884,7 @@ export interface BuildingProjection {
   progress: number;
   capacity: number;
   condition: number;
+  environment: EnvironmentalCondition;
   occupied: number;
 }
 

@@ -1,6 +1,15 @@
 import { canonicalDigest, canonicalStringify, cloneSerializable } from './canonical';
 import { resolveSimulationConfig } from './config';
 import {
+  advanceEnvironmentalCondition,
+  compareEnvironmentalStatus,
+  environmentalHealthBurden,
+  environmentalStatus,
+  facilityEnvironmentFactor,
+  initialEnvironmentalCondition,
+  summarizeEnvironment,
+} from './environment';
+import {
   BUILDING_FOOTPRINTS,
   findBuildingSite,
   resolveNearValidSite,
@@ -17,6 +26,7 @@ import {
   type BreakthroughDomain,
   type BreakthroughEffects,
   type Building,
+  type BuildingId,
   type BuildingProjection,
   type BuildingType,
   type ConstructionStage,
@@ -26,6 +36,7 @@ import {
   type DeepPartial,
   type EmergenceProfile,
   type EntityId,
+  type EnvironmentalCondition,
   type EventDatum,
   type Household,
   type InfluenceSet,
@@ -243,7 +254,9 @@ const WELL_HAULERS_PER_WELL = 26;
 const WATER_HAULED_PER_HAULER = 5;
 const ENCOUNTER_RADIUS_METERS = 5.5;
 const SHARED_CONTEXT_RADIUS_METERS = 4;
+const ENVIRONMENT_CONTEXT_RADIUS_METERS = 18;
 const DAILY_TRAVEL_METERS = 140;
+const SANITATION_TASK_REASON = 'Accumulated waste needs collection before it contaminates homes, farms, and water.';
 
 function clamp(value: number, minimum = 0, maximum = 100): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -294,6 +307,7 @@ function emptyDailyEconomy(): SettlementDailyEconomy {
     valueProduced: 0,
     wagesPaid: 0,
     wasteCreated: 0,
+    wasteRemoved: 0,
   };
 }
 
@@ -401,6 +415,8 @@ export class CurrentSimulation {
   private stateValue: WorldState;
   private rng: DeterministicRng;
   private suppressMetricSize = false;
+  private sanitationCoverageToday = new Map<BuildingId, number>();
+  private facilityProductionToday = new Map<BuildingId, ResourceLedger>();
 
   private constructor(state: WorldState, rng: DeterministicRng) {
     this.stateValue = state;
@@ -429,6 +445,7 @@ export class CurrentSimulation {
       treasury: 5_000,
       debt: 0,
       waste: 0,
+      drinkingWaterQuality: 92,
       safety: 78,
       publicTrust: 58,
       pressure: emptyPressure(),
@@ -503,6 +520,46 @@ export class CurrentSimulation {
         }
       }
     }
+    let hadLocalizedWaste = false;
+    for (const building of sortedRecordValues(state.buildings)) {
+      const legacy = building as Building & { environment?: EnvironmentalCondition };
+      if (legacy.environment === undefined) {
+        legacy.environment = initialEnvironmentalCondition(building.type);
+      } else {
+        const legacyEnvironment = legacy.environment as EnvironmentalCondition & {
+          status?: EnvironmentalCondition['status'];
+          wasteLoad?: number;
+        };
+        if (legacyEnvironment.wasteLoad === undefined) legacyEnvironment.wasteLoad = 0;
+        else hadLocalizedWaste = true;
+        if (
+          legacyEnvironment.status !== 'healthy' && legacyEnvironment.status !== 'stressed' &&
+          legacyEnvironment.status !== 'hazardous'
+        ) {
+          legacyEnvironment.status = environmentalStatus(legacyEnvironment, building.type);
+        }
+      }
+    }
+    if (!hadLocalizedWaste && state.settlement.waste > 0) {
+      const sites = sortedRecordValues(state.buildings)
+        .filter((building) => building.stage === 'complete' && building.type !== 'road');
+      let remaining = state.settlement.waste;
+      for (let index = 0; index < sites.length; index += 1) {
+        const site = sites[index];
+        if (site === undefined) continue;
+        const share = index === sites.length - 1
+          ? remaining
+          : round(state.settlement.waste / Math.max(1, sites.length));
+        site.environment.wasteLoad = Math.max(0, share);
+        site.environment.status = environmentalStatus(site.environment, site.type);
+        remaining = round(remaining - share);
+      }
+    }
+    const legacySettlement = state.settlement as Settlement & { drinkingWaterQuality?: number };
+    if (legacySettlement.drinkingWaterQuality === undefined) legacySettlement.drinkingWaterQuality = 92;
+    const legacyEconomy = state.settlement.dailyEconomy as SettlementDailyEconomy & { wasteRemoved?: number };
+    if (legacyEconomy.wasteRemoved === undefined) legacyEconomy.wasteRemoved = 0;
+    state.engineVersion = SIMULATION_ENGINE_VERSION;
     return new CurrentSimulation(state, DeterministicRng.restore(state.rngState));
   }
 
@@ -519,6 +576,8 @@ export class CurrentSimulation {
     this.stateValue.day += 1;
     this.stateValue.tick = this.stateValue.day * this.stateValue.config.ticksPerDay;
     this.stateValue.settlement.dailyEconomy = emptyDailyEconomy();
+    this.sanitationCoverageToday = new Map();
+    this.facilityProductionToday = new Map();
 
     if (inputs.entropy !== undefined && inputs.entropy !== '') this.mixEntropy(inputs.entropy);
 
@@ -538,6 +597,7 @@ export class CurrentSimulation {
     this.chooseTasksAndDestinations();
     this.updateMovement();
     this.runProductionAndEmployment();
+    this.runSanitation();
     this.consumeResourcesAndUpdateHealth();
     this.runEncounters();
     this.formPartnerships();
@@ -691,6 +751,7 @@ export class CurrentSimulation {
       .reduce((sum, institution) => sum + Object.keys(institution.followerCandidateIds).length, 0);
     const latest = this.stateValue.dailySummaries[this.stateValue.dailySummaries.length - 1];
     const saveApproximateBytes = this.suppressMetricSize ? 0 : canonicalStringify(this.stateValue).length;
+    const environment = summarizeEnvironment(completeBuildings);
     return {
       day: this.currentDay,
       population: alive.length,
@@ -730,6 +791,11 @@ export class CurrentSimulation {
       resolvedInterventions: this.stateValue.interventions.filter((record) => record.resolvedDay !== null).length,
       eventCount: this.stateValue.eventSequence,
       saveApproximateBytes,
+      ...environment,
+      drinkingWaterQuality: round(this.stateValue.settlement.drinkingWaterQuality),
+      storedWaste: round(this.stateValue.settlement.waste),
+      wasteCreatedLastDay: round(this.stateValue.settlement.dailyEconomy.wasteCreated),
+      wasteRemovedLastDay: round(this.stateValue.settlement.dailyEconomy.wasteRemoved),
     };
   }
 
@@ -762,6 +828,7 @@ export class CurrentSimulation {
       progress: round(building.stage === 'complete' ? 1 : building.laborCompleted / building.laborRequired),
       capacity: building.capacity,
       condition: round(building.condition),
+      environment: cloneSerializable(building.environment),
       occupied: building.occupiedByIds.length,
     }));
     return {
@@ -776,7 +843,11 @@ export class CurrentSimulation {
       resources: cloneSerializable(this.stateValue.settlement.resources),
       prices: cloneSerializable(this.stateValue.settlement.prices),
       pressure: cloneSerializable(this.stateValue.settlement.pressure),
-      recentEvents: cloneSerializable(this.stateValue.events.slice(-24)),
+      // Keep enough history for consequential events to remain inspectable
+      // after two busy world days. Environmental and social events can easily
+      // exceed the old 24-entry window without invalidating the underlying
+      // persisted record.
+      recentEvents: cloneSerializable(this.stateValue.events.slice(-64)),
       metrics: this.metrics(),
       digest: this.digest(),
     };
@@ -1025,6 +1096,7 @@ export class CurrentSimulation {
       deliveredMaterials: complete ? cloneSerializable(requirements.materials) : { stone: 0, tools: 0, wood: 0 },
       capacity: BUILDING_CAPACITY[type],
       condition: 100,
+      environment: this.environmentForNewSite(type, position),
       occupiedByIds: [],
       history: [{ day: this.currentDay, event: complete ? 'Present at founding' : 'Commissioned', personIds: [] }],
     };
@@ -1242,6 +1314,11 @@ export class CurrentSimulation {
         task = 'rest'; reason = 'Fatigue is limiting useful work.';
       } else if (person.homeBuildingId === null && (person.occupation === 'builder' || person.occupation === 'laborer')) {
         task = 'build'; reason = 'Housing insecurity creates direct construction incentive.';
+      } else if (
+        person.occupation === 'laborer' &&
+        this.stateValue.settlement.waste > Math.max(1, this.alivePeople().length * 0.35)
+      ) {
+        task = 'work'; reason = SANITATION_TASK_REASON;
       } else if (this.activeConstructionProjects().length > 0 && (person.occupation === 'builder' || person.occupation === 'laborer')) {
         task = 'build'; reason = 'A funded construction project needs labor and materials.';
       } else if (council?.leaderId === person.id || person.occupation === 'organizer') {
@@ -1290,7 +1367,9 @@ export class CurrentSimulation {
         return home === undefined ? { x: 0, y: 0, z: 0 } : cloneSerializable(home.position);
       }
       case 'work': {
-        const workplace = this.workplaceFor(person);
+        const workplace = this.isAssignedToSanitation(person)
+          ? this.sanitationSiteFor(person)
+          : this.workplaceFor(person);
         return workplace === undefined ? cloneSerializable(person.position) : cloneSerializable(workplace.position);
       }
       case 'idle': case 'travel': return { x: 0, y: 0, z: 0 };
@@ -1307,16 +1386,57 @@ export class CurrentSimulation {
     const pressure = this.stateValue.settlement.pressure;
     const modifiers = this.stateValue.settlement.modifiers;
     const buildings = this.completeBuildings();
-    const farmCount = buildings.filter((building) => building.type === 'farm').length;
-    const wellCount = buildings.filter((building) => building.type === 'well').length;
-    const powerCount = buildings.filter((building) => building.type === 'power-station').length;
+    const farms = buildings.filter((building) => building.type === 'farm');
+    const wells = buildings.filter((building) => building.type === 'well');
+    const powerStations = buildings.filter((building) => building.type === 'power-station');
     const clinicCount = buildings.filter((building) => building.type === 'clinic').length;
-    const workshopCount = buildings.filter((building) => building.type === 'workshop').length;
-    economy.production.food += farmCount * 16 * modifiers.foodYield * (1 - Math.max(0, pressure.food) * 0.28);
-    economy.production.water += wellCount * 82 * modifiers.waterYield * (1 - Math.max(0, pressure.water) * 0.3);
-    economy.production.energy += (28 + powerCount * 55) * modifiers.energyEfficiency * (1 - Math.max(0, pressure.energy) * 0.22);
+    const workshops = buildings.filter((building) => building.type === 'workshop');
+    const environmentConfig = this.stateValue.config.environment;
+    const farmWaterRatio = this.consumeFacilityResource('water', farms.length * environmentConfig.farmWaterPerDay);
+    const workshopEnergyRatio = this.consumeFacilityResource('energy', workshops.length * environmentConfig.workshopEnergyPerDay);
+    const sharedToolsRatio = this.consumeFacilityResource(
+      'tools',
+      farms.length * environmentConfig.farmToolsPerDay + powerStations.length * environmentConfig.powerToolsPerDay,
+    );
+    const farmToolsRatio = sharedToolsRatio;
+    const powerToolsRatio = sharedToolsRatio;
+    const farmInputFactor = farms.length === 0 ? 1 : 0.72 + Math.min(farmWaterRatio, farmToolsRatio) * 0.28;
+    const workshopInputFactor = workshops.length === 0 ? 1 : 0.65 + workshopEnergyRatio * 0.35;
+    const powerInputFactor = powerStations.length === 0 ? 1 : 0.7 + powerToolsRatio * 0.3;
+    const wellEnvironmentFactor = wells.length === 0
+      ? 1
+      : wells.reduce((sum, building) => sum + facilityEnvironmentFactor(building.type, building.environment), 0) /
+        wells.length;
+    for (const farm of farms) {
+      const output = 16 * modifiers.foodYield * farmInputFactor * facilityEnvironmentFactor(farm.type, farm.environment) *
+        (1 - Math.max(0, pressure.food) * 0.28);
+      economy.production.food += output;
+      this.recordFacilityProduction(farm, 'food', output);
+    }
+    const storedWaterBeforeProduction = this.stateValue.settlement.resources.water;
+    const storedWaterQuality = this.stateValue.settlement.drinkingWaterQuality;
+    let producedWaterQualityMass = 0;
+    for (const well of wells) {
+      const output = 82 * modifiers.waterYield * facilityEnvironmentFactor(well.type, well.environment) *
+        (1 - Math.max(0, pressure.water) * 0.3);
+      economy.production.water += output;
+      producedWaterQualityMass += output * well.environment.waterQuality;
+      this.recordFacilityProduction(well, 'water', output);
+    }
+    const energyPressureFactor = 1 - Math.max(0, pressure.energy) * 0.22;
+    economy.production.energy += 28 * modifiers.energyEfficiency * energyPressureFactor;
+    for (const powerStation of powerStations) {
+      const output = 55 * powerInputFactor * facilityEnvironmentFactor(powerStation.type, powerStation.environment) *
+        modifiers.energyEfficiency * energyPressureFactor;
+      economy.production.energy += output;
+      this.recordFacilityProduction(powerStation, 'energy', output);
+    }
     economy.production.medicine += clinicCount * 2.2 * modifiers.healthCapacity;
-    economy.production.tools += workshopCount * 1.4;
+    for (const workshop of workshops) {
+      const output = 1.4 * workshopInputFactor * facilityEnvironmentFactor(workshop.type, workshop.environment);
+      economy.production.tools += output;
+      this.recordFacilityProduction(workshop, 'tools', output);
+    }
 
     for (const person of this.alivePeople()) person.lastTaskSuccess = false;
     // Fetching water is real labor, not queueing: every adult who reached the
@@ -1324,9 +1444,18 @@ export class CurrentSimulation {
     // supply instead of freezing the town around a dry well.
     const haulers = this.alivePeople().filter((person) =>
       person.currentTask === 'fetch-water' && isAdult(person) && this.isAtTaskWorksite(person));
-    const activeHaulers = haulers.slice(0, wellCount * WELL_HAULERS_PER_WELL);
+    const activeHaulers = haulers.slice(0, wells.length * WELL_HAULERS_PER_WELL);
     for (const person of activeHaulers) person.lastTaskSuccess = true;
-    economy.production.water += activeHaulers.length * WATER_HAULED_PER_HAULER * modifiers.waterYield;
+    let hauledWater = 0;
+    for (const person of activeHaulers) {
+      const well = this.buildingForTask(person, 'fetch-water');
+      const localFactor = well === undefined ? wellEnvironmentFactor : facilityEnvironmentFactor(well.type, well.environment);
+      const output = WATER_HAULED_PER_HAULER * modifiers.waterYield * localFactor;
+      producedWaterQualityMass += output * (well?.environment.waterQuality ?? this.stateValue.settlement.drinkingWaterQuality);
+      hauledWater += output;
+      if (well !== undefined) this.recordFacilityProduction(well, 'water', output);
+    }
+    economy.production.water += hauledWater;
     for (const person of this.alivePeople()) {
       if (!isAdult(person) || !person.employed || !this.canPerformProductiveTask(person) || !this.isAtTaskWorksite(person)) continue;
       const skillDomain = OCCUPATION_SKILL[person.occupation];
@@ -1338,7 +1467,10 @@ export class CurrentSimulation {
       const output = person.lastTaskSuccess ? capacity : capacity * 0.42;
       switch (person.currentTask) {
         case 'work':
-          this.produceForOccupation(person.occupation, output, economy.production);
+          this.produceForOccupation(person, output, economy.production, {
+            farm: farmInputFactor,
+            workshop: workshopInputFactor,
+          });
           break;
         case 'trade':
           economy.valueProduced += 7 * output * modifiers.tradeEfficiency;
@@ -1375,6 +1507,12 @@ export class CurrentSimulation {
       if (paid < wage) this.stateValue.settlement.debt += wage - paid;
       economy.valueProduced += output * 4;
     }
+    const waterAfterProduction = storedWaterBeforeProduction + economy.production.water;
+    if (waterAfterProduction > 0) {
+      this.stateValue.settlement.drinkingWaterQuality = round(clamp(
+        (storedWaterBeforeProduction * storedWaterQuality + producedWaterQualityMass) / waterAfterProduction,
+      ));
+    }
     for (const resource of RESOURCE_KINDS) {
       economy.production[resource] = round(Math.max(0, economy.production[resource]));
       this.stateValue.settlement.resources[resource] = round(this.stateValue.settlement.resources[resource] + economy.production[resource]);
@@ -1382,16 +1520,133 @@ export class CurrentSimulation {
     this.stateValue.settlement.treasury += economy.valueProduced * 0.16;
   }
 
-  private produceForOccupation(occupation: Occupation, output: number, ledger: ResourceLedger): void {
-    switch (occupation) {
-      case 'farmer': ledger.food += 7.5 * output; break;
+  private produceForOccupation(
+    person: Person,
+    output: number,
+    ledger: ResourceLedger,
+    inputFactors: { farm: number; workshop: number },
+  ): void {
+    const workplace = this.workplaceFor(person);
+    const localFactor = workplace === undefined ? 1 : facilityEnvironmentFactor(workplace.type, workplace.environment);
+    switch (person.occupation) {
+      case 'farmer': {
+        const produced = 7.5 * output * inputFactors.farm * localFactor;
+        ledger.food += produced;
+        if (workplace?.type === 'farm') this.recordFacilityProduction(workplace, 'food', produced);
+        break;
+      }
       case 'hunter': ledger.food += 3.8 * output; ledger.medicine += 0.15 * output; break;
-      case 'builder': case 'laborer': ledger.wood += 2.1 * output; ledger.stone += 1.5 * output; break;
-      case 'mechanic': case 'inventor': ledger.tools += 0.8 * output; ledger.energy += 1.2 * output; break;
+      case 'builder':
+        ledger.wood += 2.1 * output; ledger.stone += 1.5 * output; break;
+      case 'laborer':
+        if (!this.isAssignedToSanitation(person)) {
+          ledger.wood += 2.1 * output;
+          ledger.stone += 1.5 * output;
+        }
+        break;
+      case 'mechanic': case 'inventor': {
+        const tools = 0.8 * output * inputFactors.workshop * localFactor;
+        const energy = 1.2 * output * inputFactors.workshop * localFactor;
+        ledger.tools += tools;
+        ledger.energy += energy;
+        if (workplace?.type === 'workshop') {
+          this.recordFacilityProduction(workplace, 'tools', tools);
+          this.recordFacilityProduction(workplace, 'energy', energy);
+        }
+        break;
+      }
       case 'healer': ledger.medicine += 0.65 * output; break;
       case 'trader': ledger.transport += 0.18 * output; break;
       case 'explorer': ledger.food += 0.8 * output; ledger.wood += 0.7 * output; break;
       case 'artist': case 'caregiver': case 'organizer': case 'researcher': case 'teacher': case 'unemployed': break;
+    }
+  }
+
+  private recordFacilityProduction(building: Building, resource: ResourceKind, amount: number): void {
+    if (amount <= 0) return;
+    const ledger = this.facilityProductionToday.get(building.id) ?? emptyResources();
+    ledger[resource] += amount;
+    this.facilityProductionToday.set(building.id, ledger);
+  }
+
+  private consumeFacilityResource(resource: ResourceKind, amount: number): number {
+    if (amount <= 0) return 1;
+    const available = this.stateValue.settlement.resources[resource];
+    const supplied = Math.min(amount, available);
+    this.stateValue.settlement.resources[resource] = round(available - supplied);
+    this.stateValue.settlement.dailyEconomy.consumption[resource] += supplied;
+    return supplied / amount;
+  }
+
+  private runSanitation(): void {
+    const workers = this.alivePeople().filter((person) =>
+      this.isAssignedToSanitation(person) && person.lastTaskSuccess && this.isAtTaskWorksite(person));
+    if (workers.length === 0) return;
+    const assignments = new Map<BuildingId, { site: Building; workers: Person[] }>();
+    for (const worker of workers) {
+      const site = this.buildingForTask(worker, 'work');
+      if (site === undefined) continue;
+      const assignment = assignments.get(site.id) ?? { site, workers: [] };
+      assignment.workers.push(worker);
+      assignments.set(site.id, assignment);
+    }
+    const assignedWorkers = [...assignments.values()].reduce((sum, assignment) => sum + assignment.workers.length, 0);
+    const targetWaste = [...assignments.values()]
+      .reduce((sum, assignment) => sum + assignment.site.environment.wasteLoad, 0);
+    if (assignedWorkers === 0 || targetWaste <= 0) return;
+
+    const environmentConfig = this.stateValue.config.environment;
+    const baseCapacity = assignedWorkers * environmentConfig.sanitationPerWorker;
+    const transportNeed = Math.min(baseCapacity, targetWaste) * 0.08;
+    const transportRatio = transportNeed <= 0
+      ? 1
+      : Math.min(1, this.stateValue.settlement.resources.transport / transportNeed);
+    const capacityBeforePower = Math.min(targetWaste, baseCapacity * (0.25 + transportRatio * 0.75));
+    const energyNeed = capacityBeforePower * environmentConfig.sanitationEnergyPerWaste;
+    const energyAvailable = this.stateValue.settlement.resources.energy;
+    const energyOffered = Math.min(energyNeed, energyAvailable);
+    const energyRatio = energyNeed <= 0 ? 1 : energyOffered / energyNeed;
+    const totalCapacity = capacityBeforePower * (0.35 + energyRatio * 0.65);
+    const capacityPerWorker = totalCapacity / assignedWorkers;
+    let wasteRemoved = 0;
+    const removals: { assignment: { site: Building; workers: Person[] }; amount: number; before: number }[] = [];
+    for (const assignment of [...assignments.values()].sort((left, right) => left.site.id.localeCompare(right.site.id))) {
+      const before = assignment.site.environment.wasteLoad;
+      const amount = Math.min(before, capacityPerWorker * assignment.workers.length);
+      assignment.site.environment.wasteLoad = round(Math.max(0, before - amount));
+      wasteRemoved += amount;
+      removals.push({ assignment, amount, before });
+    }
+    wasteRemoved = round(wasteRemoved);
+    if (wasteRemoved <= 0) return;
+    const actualEnergyUsed = totalCapacity <= 0 ? 0 : energyOffered * (wasteRemoved / totalCapacity);
+    this.stateValue.settlement.resources.energy = round(energyAvailable - actualEnergyUsed);
+    this.stateValue.settlement.dailyEconomy.consumption.energy = round(
+      this.stateValue.settlement.dailyEconomy.consumption.energy + actualEnergyUsed,
+    );
+    this.stateValue.settlement.dailyEconomy.wasteRemoved = wasteRemoved;
+    this.stateValue.settlement.waste = round(sortedRecordValues(this.stateValue.buildings)
+      .reduce((sum, building) => sum + building.environment.wasteLoad, 0));
+
+    for (const removal of removals) {
+      if (removal.amount <= 0) continue;
+      const workerIds = removal.assignment.workers.map((worker) => worker.id).sort();
+      this.sanitationCoverageToday.set(
+        removal.assignment.site.id,
+        removal.before <= 0 ? 0 : clamp(removal.amount / removal.before, 0, 1),
+      );
+      const siteEnergy = wasteRemoved <= 0 ? 0 : actualEnergyUsed * (removal.amount / wasteRemoved);
+      removal.assignment.site.history.push({
+        day: this.currentDay,
+        event: `Sanitation removed ${round(removal.amount)} waste units`,
+        personIds: workerIds,
+      });
+      this.emit(
+        'sanitation-cleanup',
+        [removal.assignment.site.id, ...workerIds],
+        `${workerIds.length} sanitation worker(s) removed ${round(removal.amount)} waste units from ${removal.assignment.site.name}.`,
+        { energyUsed: round(siteEnergy), wasteRemoved: round(removal.amount) },
+      );
     }
   }
 
@@ -1410,6 +1665,7 @@ export class CurrentSimulation {
     const config = this.stateValue.config.needs;
     const deaths: { person: Person; cause: string }[] = [];
     let shortageEmitted = false;
+    const drinkingWaterDamage = clamp((72 - this.stateValue.settlement.drinkingWaterQuality) / 32, 0, 1) * 2.4;
     for (const person of this.alivePeople()) {
       const scale = isAdult(person) ? 1 : config.childConsumptionScale;
       const foodNeeded = config.foodPerAdult * scale;
@@ -1438,6 +1694,10 @@ export class CurrentSimulation {
       if (person.needs.water < 20) damage += config.dehydrationDamage * (1 - person.needs.water / 20);
       if (person.homeBuildingId === null) damage += config.exposureDamage * 0.25;
       damage += Math.max(0, this.stateValue.settlement.pressure.health) * this.stateValue.settlement.modifiers.diseaseRisk * 2.5;
+      const localEnvironment = this.environmentalContextFor(person);
+      const localBurden = localEnvironment === undefined ? 0 : environmentalHealthBurden(localEnvironment.environment);
+      damage += (localBurden * 0.8 + drinkingWaterDamage * waterRatio) *
+        this.stateValue.settlement.modifiers.diseaseRisk;
       const healerCount = this.alivePeople().filter((candidate) => candidate.currentTask === 'heal').length;
       const recovery = person.needs.food > 50 && person.needs.water > 50 ? 1.2 + healerCount * 0.04 : 0;
       person.health = clamp(person.health + recovery - damage);
@@ -2191,6 +2451,15 @@ export class CurrentSimulation {
         pressure[axis] += value * evidence * 0.38 * openness;
       }
     }
+    const environment = summarizeEnvironment(this.completeBuildings());
+    const wastePerResident = this.stateValue.settlement.waste / Math.max(1, this.alivePeople().length);
+    const unsafeWater = clamp((72 - this.stateValue.settlement.drinkingWaterQuality) / 72, 0, 1);
+    pressure.water += unsafeWater * 0.55;
+    pressure.health += clamp(
+      wastePerResident * 0.12 + environment.averageContamination / 100 * 0.5,
+      0,
+      0.75,
+    );
     for (const [axis, value] of pressureEntries(pressure)) pressure[axis] = round(clamp(value, -1, 1));
     this.stateValue.activeSignals = active.sort((a, b) => a.signal.id.localeCompare(b.signal.id));
     this.stateValue.settlement.pressure = pressure;
@@ -2281,11 +2550,42 @@ export class CurrentSimulation {
 
   private applySabotage(intervention: ObserverIntervention, local: DeterministicRng): string {
     const damage = intervention.amount * clamp(intervention.intensity, 0, 1);
+    let outcomeDetail = '';
     switch (intervention.payloadType) {
-      case 'contamination':
+      case 'contamination': {
         this.stateValue.settlement.resources.water = Math.max(0, this.stateValue.settlement.resources.water - damage);
         this.stateValue.settlement.pressure.health = clamp(this.stateValue.settlement.pressure.health + intervention.intensity * 0.35, -1, 1);
+        const wells = this.completeBuildings().filter((building) => building.type === 'well');
+        const target = wells.length === 0 ? undefined : local.pick(wells);
+        if (target !== undefined) {
+          const previousStatus = target.environment.status;
+          target.environment.contamination = round(clamp(target.environment.contamination + damage * 0.8));
+          target.environment.waterQuality = round(clamp(target.environment.waterQuality - damage * 0.55));
+          target.environment.wasteLoad = round(Math.max(0, target.environment.wasteLoad + damage * 0.1));
+          target.environment.status = environmentalStatus(target.environment, target.type, previousStatus);
+          this.stateValue.settlement.waste = round(sortedRecordValues(this.stateValue.buildings)
+            .reduce((sum, building) => sum + building.environment.wasteLoad, 0));
+          const statusChange = compareEnvironmentalStatus(previousStatus, target.environment.status);
+          if (statusChange > 0) {
+            this.emit(
+              'environment-degraded',
+              [target.id],
+              `${target.name} became ${target.environment.status} after local water contamination.`,
+              {
+                contamination: target.environment.contamination,
+                waterQuality: target.environment.waterQuality,
+              },
+            );
+            target.history.push({
+              day: this.currentDay,
+              event: `Local environment became ${target.environment.status} after contamination`,
+              personIds: [],
+            });
+          }
+          outcomeDetail = ` It directly damaged ${target.name}'s water quality.`;
+        }
         break;
+      }
       case 'infrastructure-failure': {
         const targets = this.completeBuildings().filter((building) => building.type !== 'house');
         const target = targets.length === 0 ? undefined : local.pick(targets);
@@ -2306,9 +2606,92 @@ export class CurrentSimulation {
     }
     if (this.stateValue.settlement.publicTrust < 35) {
       this.stateValue.settlement.modifiers.socialCohesion = round(clamp(this.stateValue.settlement.modifiers.socialCohesion + 0.02, 0.7, 1.5));
-      return `${intervention.payloadType.replaceAll('-', ' ')} caused damage but also provoked an observable cooperative response.`;
+      return `${intervention.payloadType.replaceAll('-', ' ')} caused damage but also provoked an observable cooperative response.${outcomeDetail}`;
     }
-    return `${intervention.payloadType.replaceAll('-', ' ')} entered the causal economy as damage, scarcity, and contested information.`;
+    return `${intervention.payloadType.replaceAll('-', ' ')} entered the causal economy as damage, scarcity, and contested information.${outcomeDetail}`;
+  }
+
+  private depositWasteLoad(
+    amount: number,
+    weightedSources: readonly { site: Building; weight: number }[],
+    sites: readonly Building[],
+  ): void {
+    if (amount <= 0 || weightedSources.length === 0) return;
+    const sources = [...weightedSources]
+      .filter(({ weight }) => weight > 0)
+      .sort((left, right) => left.site.id.localeCompare(right.site.id));
+    const totalSourceWeight = sources.reduce((sum, source) => sum + source.weight, 0);
+    if (totalSourceWeight <= 0) return;
+    const additions = new Map<BuildingId, number>();
+    const add = (site: Building, value: number): void => {
+      additions.set(site.id, (additions.get(site.id) ?? 0) + value);
+    };
+    for (const source of sources) {
+      const sourceAmount = amount * source.weight / totalSourceWeight;
+      const neighbors = sites
+        .filter((candidate) => candidate.id !== source.site.id)
+        .map((candidate) => ({
+          site: candidate,
+          distance: Math.sqrt(distanceSquared(candidate.position, source.site.position)),
+        }))
+        .filter(({ distance }) => distance <= 24)
+        .sort((left, right) => left.site.id.localeCompare(right.site.id));
+      if (neighbors.length === 0) {
+        add(source.site, sourceAmount);
+        continue;
+      }
+      add(source.site, sourceAmount * 0.7);
+      const neighborWeights = neighbors.map((neighbor) => ({
+        ...neighbor,
+        weight: 1 / (1 + neighbor.distance),
+      }));
+      const totalNeighborWeight = neighborWeights.reduce((sum, neighbor) => sum + neighbor.weight, 0);
+      for (const neighbor of neighborWeights) {
+        add(neighbor.site, sourceAmount * 0.3 * neighbor.weight / totalNeighborWeight);
+      }
+    }
+    for (const site of sites) {
+      site.environment.wasteLoad = round(Math.max(0, site.environment.wasteLoad + (additions.get(site.id) ?? 0)));
+    }
+  }
+
+  private depositDailyWaste(foodWaste: number, toolWaste: number, sites: readonly Building[]): void {
+    if (sites.length === 0) return;
+    const occupants = new Map<BuildingId, number>();
+    let peopleWithoutHomes = 0;
+    for (const person of this.alivePeople()) {
+      if (person.homeBuildingId === null || this.stateValue.buildings[person.homeBuildingId]?.stage !== 'complete') {
+        peopleWithoutHomes += 1;
+      } else {
+        occupants.set(person.homeBuildingId, (occupants.get(person.homeBuildingId) ?? 0) + 1);
+      }
+    }
+    const foodSources: { site: Building; weight: number }[] = [];
+    for (const site of sites) {
+      const occupantCount = occupants.get(site.id) ?? 0;
+      if (site.type === 'house' && occupantCount > 0) foodSources.push({ site, weight: occupantCount });
+    }
+    const publicSite = sites.find((site) => site.stage === 'complete' && site.type === 'market') ??
+      sites.find((site) => site.stage === 'complete' && site.type === 'warehouse') ??
+      sites.find((site) => site.stage === 'complete') ?? sites[0];
+    if (publicSite !== undefined && (peopleWithoutHomes > 0 || foodSources.length === 0)) {
+      foodSources.push({ site: publicSite, weight: Math.max(1, peopleWithoutHomes) });
+    }
+    this.depositWasteLoad(foodWaste, foodSources, sites);
+
+    const industrialSources = sites
+      .filter((site) => site.stage === 'complete' && site.type === 'workshop')
+      .map((site) => ({ site, weight: this.facilityProductionToday.get(site.id)?.tools ?? 0 }))
+      .filter(({ weight }) => weight > 0);
+    const locatedToolProduction = industrialSources.reduce((sum, source) => sum + source.weight, 0);
+    const totalToolProduction = Math.max(0, this.stateValue.settlement.dailyEconomy.production.tools);
+    const locatedToolWaste = totalToolProduction <= 0
+      ? 0
+      : toolWaste * clamp(locatedToolProduction / totalToolProduction, 0, 1);
+    this.depositWasteLoad(locatedToolWaste, industrialSources, sites);
+    if (publicSite !== undefined) {
+      this.depositWasteLoad(Math.max(0, toolWaste - locatedToolWaste), [{ site: publicSite, weight: 1 }], sites);
+    }
   }
 
   private updatePricesAndEnvironment(): void {
@@ -2320,13 +2703,90 @@ export class CurrentSimulation {
       const target = BASE_PRICES[resource] * (0.55 + scarcity * 0.75);
       this.stateValue.settlement.prices[resource] = round(clamp(this.stateValue.settlement.prices[resource] * 0.78 + target * 0.22, 0.1, 100));
     }
-    economy.wasteCreated = round(economy.consumption.food * 0.05 + economy.production.tools * 0.08);
-    this.stateValue.settlement.waste = round(this.stateValue.settlement.waste + economy.wasteCreated - this.alivePeople().filter((person) => person.occupation === 'laborer').length * 0.15);
-    if (this.stateValue.settlement.waste > this.alivePeople().length * 2) {
-      this.stateValue.settlement.modifiers.diseaseRisk = round(clamp(this.stateValue.settlement.modifiers.diseaseRisk + 0.006, 0.65, 2));
-    } else {
-      this.stateValue.settlement.modifiers.diseaseRisk = round(clamp(this.stateValue.settlement.modifiers.diseaseRisk - 0.002, 0.65, 2));
+    const environmentConfig = this.stateValue.config.environment;
+    const foodWaste = economy.consumption.food * environmentConfig.wastePerFoodConsumed;
+    const toolWaste = economy.production.tools * environmentConfig.wastePerToolProduced;
+    economy.wasteCreated = round(foodWaste + toolWaste);
+    const buildings = sortedRecordValues(this.stateValue.buildings);
+    const sites = buildings.filter((building) => building.type !== 'road');
+    this.depositDailyWaste(foodWaste, toolWaste, sites);
+
+    const previousEnvironments = new Map(sites.map((building) => [building.id, cloneSerializable(building.environment)]));
+    for (const building of sites) {
+      const previousStatus = building.environment.status;
+      const localProduction = this.facilityProductionToday.get(building.id);
+      let productionPressure = 0;
+      if (building.type === 'farm') {
+        productionPressure = (localProduction?.food ?? 0) / 70;
+      } else if (building.type === 'well') {
+        productionPressure = (localProduction?.water ?? 0) / 160;
+      } else if (building.type === 'workshop') {
+        productionPressure = (localProduction?.tools ?? 0) / 8;
+      } else if (building.type === 'power-station') {
+        productionPressure = (localProduction?.energy ?? 0) / 120;
+      }
+      const neighbors = sites
+        .filter((candidate) => candidate.id !== building.id)
+        .map((candidate) => ({
+          candidate,
+          distance: Math.sqrt(distanceSquared(candidate.position, building.position)),
+        }))
+        .filter(({ distance }) => distance <= 24);
+      const neighborWeight = neighbors.reduce((sum, neighbor) => sum + 1 / (1 + neighbor.distance), 0);
+      const previous = previousEnvironments.get(building.id) ?? building.environment;
+      const neighborContamination = neighborWeight <= 0
+        ? previous.contamination
+        : neighbors.reduce((sum, neighbor) => {
+          const environment = previousEnvironments.get(neighbor.candidate.id) ?? neighbor.candidate.environment;
+          return sum + environment.contamination / (1 + neighbor.distance);
+        }, 0) / neighborWeight;
+      const constructionActive = building.builderIds.some((builderId) => {
+        const builder = this.stateValue.people[builderId];
+        return builder?.alive === true && builder.currentTask === 'build' &&
+          distanceSquared(builder.position, this.constructionWorksitePosition(builder, building)) <= TASK_SITE_RADIUS_METERS ** 2;
+      });
+      building.environment = advanceEnvironmentalCondition(previous, building.type, {
+        constructionActive,
+        neighborContamination,
+        productionPressure,
+        sanitationCoverage: this.sanitationCoverageToday.get(building.id) ?? 0,
+        wasteLoad: building.environment.wasteLoad,
+      });
+      const statusChange = compareEnvironmentalStatus(previousStatus, building.environment.status);
+      if (building.type !== 'road' && statusChange !== 0) {
+        const recovered = statusChange < 0;
+        this.emit(
+          recovered ? 'environment-recovered' : 'environment-degraded',
+          [building.id],
+          `${building.name}'s local environment ${recovered ? 'recovered to' : 'degraded to'} ${building.environment.status}.`,
+          {
+            contamination: building.environment.contamination,
+            fertility: building.environment.fertility,
+            waterQuality: building.environment.waterQuality,
+          },
+        );
+        building.history.push({
+          day: this.currentDay,
+          event: `Local environment ${recovered ? 'recovered to' : 'degraded to'} ${building.environment.status}`,
+          personIds: [],
+        });
+      }
     }
+    this.stateValue.settlement.waste = round(sites.reduce((sum, building) => sum + building.environment.wasteLoad, 0));
+    const aliveCount = Math.max(1, this.alivePeople().length);
+    const wastePerResident = this.stateValue.settlement.waste / aliveCount;
+    const environment = summarizeEnvironment(sites);
+    const targetDiseaseRisk = clamp(
+      0.65 + wastePerResident * 0.22 + environment.averageContamination / 100 * 0.6 +
+      (100 - environment.averageWaterQuality) / 100 * 0.5,
+      0.65,
+      2,
+    );
+    this.stateValue.settlement.modifiers.diseaseRisk = round(clamp(
+      this.stateValue.settlement.modifiers.diseaseRisk * 0.9 + targetDiseaseRisk * 0.1,
+      0.65,
+      2,
+    ));
     for (const building of this.completeBuildings()) {
       building.condition = clamp(building.condition - 0.015 - Math.max(0, this.stateValue.settlement.pressure.construction) * 0.03);
     }
@@ -2496,6 +2956,77 @@ export class CurrentSimulation {
     return workplaces[this.personAssignmentIndex(person, workplaces.length)];
   }
 
+  private isAssignedToSanitation(person: Person): boolean {
+    return person.occupation === 'laborer' && person.currentTask === 'work' && person.decisionReason === SANITATION_TASK_REASON;
+  }
+
+  private sanitationSiteFor(person: Person): Building | undefined {
+    const sites = this.completeBuildings()
+      .filter((building) => building.type !== 'road' && building.environment.wasteLoad > 0)
+      .sort((left, right) => {
+        const leftSeverity = left.environment.wasteLoad * 10 + left.environment.contamination + (100 - left.environment.waterQuality) * 0.2;
+        const rightSeverity = right.environment.wasteLoad * 10 + right.environment.contamination + (100 - right.environment.waterQuality) * 0.2;
+        return rightSeverity - leftSeverity || left.id.localeCompare(right.id);
+      });
+    const slots = sites.flatMap((site) => {
+      const count = Math.max(1, Math.min(12, Math.ceil(
+        site.environment.wasteLoad / Math.max(0.01, this.stateValue.config.environment.sanitationPerWorker),
+      )));
+      return Array.from({ length: count }, () => site);
+    });
+    return slots[this.personAssignmentIndex(person, slots.length)];
+  }
+
+  private sanitationSiteAtDestination(person: Person): Building | undefined {
+    return this.completeBuildings().find((building) =>
+      building.type !== 'road' && distanceSquared(building.position, person.destination) <= 0.01);
+  }
+
+  private environmentalContextFor(person: Person): Building | undefined {
+    const taskSite = this.buildingForTask(person, person.currentTask);
+    if (taskSite !== undefined && distanceSquared(person.position, taskSite.position) <= SHARED_CONTEXT_RADIUS_METERS ** 2) {
+      return taskSite;
+    }
+    if (person.homeBuildingId !== null) {
+      const home = this.stateValue.buildings[person.homeBuildingId];
+      if (home !== undefined && distanceSquared(person.position, home.position) <= SHARED_CONTEXT_RADIUS_METERS ** 2) return home;
+    }
+    return this.completeBuildings()
+      .filter((building) => building.type !== 'road')
+      .map((building) => ({ building, distance: distanceSquared(building.position, person.position) }))
+      .filter(({ distance }) => distance <= ENVIRONMENT_CONTEXT_RADIUS_METERS ** 2)
+      .sort((left, right) => left.distance - right.distance || left.building.id.localeCompare(right.building.id))[0]?.building;
+  }
+
+  private environmentForNewSite(type: BuildingType, position: Position3): EnvironmentalCondition {
+    const nearby = sortedRecordValues(this.stateValue.buildings)
+      .filter((building) => building.type !== 'road')
+      .map((building) => ({
+        building,
+        distance: Math.sqrt(distanceSquared(building.position, position)),
+      }))
+      .filter(({ distance }) => distance <= 30);
+    if (nearby.length === 0) return initialEnvironmentalCondition(type);
+    let totalWeight = 0;
+    let fertility = 0;
+    let waterQuality = 0;
+    let contamination = 0;
+    for (const { building, distance } of nearby) {
+      const weight = 1 / (1 + distance);
+      totalWeight += weight;
+      fertility += building.environment.fertility * weight;
+      waterQuality += building.environment.waterQuality * weight;
+      contamination += building.environment.contamination * weight;
+    }
+    const condition = {
+      fertility: round(fertility / totalWeight),
+      waterQuality: round(waterQuality / totalWeight),
+      contamination: round(contamination / totalWeight),
+      wasteLoad: 0,
+    };
+    return { ...condition, status: environmentalStatus(condition, type) };
+  }
+
   private constructionProjectFor(person: Person, projects = this.activeConstructionProjects()): Building | undefined {
     return projects[this.personAssignmentIndex(person, projects.length)];
   }
@@ -2526,7 +3057,9 @@ export class CurrentSimulation {
   private buildingForTask(person: Person, task: TaskType): Building | undefined {
     switch (task) {
       case 'build': return this.constructionProjectFor(person);
-      case 'work': return this.workplaceFor(person);
+      case 'work': return this.isAssignedToSanitation(person)
+        ? this.sanitationSiteAtDestination(person)
+        : this.workplaceFor(person);
       case 'trade': case 'socialize': case 'eat':
         return this.completeBuildings().find((building) => building.type === 'market');
       case 'heal': case 'care':

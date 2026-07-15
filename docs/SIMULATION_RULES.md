@@ -19,11 +19,11 @@ The engine uses an explicit stable daily phase order so replay is inspectable:
 4. Commission construction from measured food, water, housing, and civic pressure.
 5. Select needs-driven tasks and physical destinations from locally available sites.
 6. Move people toward those destinations using the authoritative position state.
-7. Permit production, care, trade, government, research, and construction effects only for people who reached the appropriate site; then consume resources and update health.
+7. Plan shared facility inputs without record-order priority; permit production, care, trade, government, research, and construction effects only for people who reached the appropriate site; perform arrived sanitation work; then consume resources and update health.
 8. Resolve physically plausible encounters, relationship memories, partnerships, and reproduction decisions.
 9. Deliver construction materials and labor from builders present at their assigned projects, advancing visible stages.
 10. Update follower networks, elections, policy, institutional response, experiments, adoption, skills, and historical significance.
-11. Update prices and environment, reconcile housing, prune bounded history, and emit the daily result.
+11. Deposit the day's waste at named source patches, synchronously spread and recover local conditions, update prices and disease pressure, reconcile housing, prune bounded history, and emit the daily result.
 
 Adding a subsystem must not silently change this order without a documented simulation-version change.
 
@@ -42,6 +42,16 @@ Conception additionally requires adult stages, biological compatibility, a matur
 Resources are conserved except for declared production, consumption, spoilage, damage, and outside transfers. Prices respond to stock coverage and recent unmet demand. Employment is a relationship between a person and a productive organization, not a cosmetic label.
 
 A building begins as an authorized project with a location and bill of materials. Builders are assigned to stable project destinations; only builders who arrive within the site radius may recover local material, deliver inventory, earn construction wages, or add labor. Foundation, frame, walls, roof, fitting, utility, and occupancy stages are historical state. A shortage or an absent workforce can stall the site.
+
+## Environment, sanitation, and water
+
+Environmental conditions belong to named building-centered land patches. Waste is conserved as the sum of local `wasteLoad` stocks; the settlement total is a cached aggregate, never a second independent source. Household and industrial waste begins at causal source sites and may spread only to bounded neighbors. Contamination diffusion uses a prior-day snapshot so iteration order cannot alter outcomes.
+
+Sanitation is physical work. A laborer must choose the task, travel to the assigned dirty site, succeed, and have settlement energy and transport capacity available. Cleanup removes only that site's waste and emits one target-level event. Transport is durable capacity and is not consumed as if the cart itself were fuel.
+
+Facility inputs sharing a resource receive the same scarcity ratio. Farm fertility and water, well water quality, and industrial contamination affect output at the named producing site. Produced well water mixes with stored water by volume; consuming water does not change its quality. Drinking-water quality harms health only in proportion to water a person actually receives and raises future water pressure; conditions around a person's reached home or workplace and settlement contamination/waste contribute local and systemic health pressure.
+
+New buildings inherit nearby soil, water, and contamination. A new well beside polluted land cannot create clean groundwater merely by being commissioned. A stalled construction plan has no environmental effect unless workers actually reach it.
 
 ## Death and inheritance
 

@@ -3,12 +3,13 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { memo, useEffect, useMemo } from 'react';
 import { ACESFilmicToneMapping, SRGBColorSpace } from 'three';
 
-import type { CameraMode, Selection, VehicleProjection } from '../app/types';
+import type { CameraMode, EnvironmentOverlayMetric, Selection, VehicleProjection } from '../app/types';
 import type { WorldProjection } from '../simulation';
 import { BuildingFigure } from './BuildingFigure';
 import type { RenderDiagnostics } from './DiagnosticsBridge';
 import { DiagnosticsBridge } from './DiagnosticsBridge';
 import { EconomyLayer } from './EconomyLayer';
+import { EnvironmentOverlay } from './EnvironmentOverlay';
 import { EventLayer } from './EventLayer';
 import { FarPopulation } from './FarPopulation';
 import { Landmarks } from './Landmarks';
@@ -27,6 +28,7 @@ interface WorldCanvasProps {
   vehicles: VehicleProjection[];
   selection: Selection;
   cameraMode: CameraMode;
+  environmentOverlay: EnvironmentOverlayMetric | null;
   onSelect: (selection: Selection) => void;
   onCameraModeChange: (mode: CameraMode) => void;
   onCameraDiagnostics: (diagnostics: CameraDiagnostics) => void;
@@ -46,6 +48,7 @@ function WorldCanvasComponent({
   vehicles,
   selection,
   cameraMode,
+  environmentOverlay,
   onSelect,
   onCameraModeChange,
   onCameraDiagnostics,
@@ -124,6 +127,9 @@ function WorldCanvasComponent({
       <ProjectionShadowBudget revision={projection.digest} />
 
       <Terrain />
+      {environmentOverlay !== null && (
+        <EnvironmentOverlay buildings={projection.buildings} metric={environmentOverlay} />
+      )}
       <RoadNetwork buildings={projection.buildings} />
       <Nature />
       <Landmarks />

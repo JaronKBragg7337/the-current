@@ -1,7 +1,7 @@
 import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { CameraMode, Selection } from './app/types';
+import type { CameraMode, EnvironmentOverlayMetric, Selection } from './app/types';
 import { useWorldRuntime, type WorldRuntime } from './app/sharedWorldRuntime';
 import { BUILDING_FOOTPRINTS } from './simulation';
 import { CameraDock } from './ui/CameraDock';
@@ -40,6 +40,7 @@ declare global {
       cameraTransitioning: boolean;
       day: number;
       digest: string;
+      environmentOverlay: EnvironmentOverlayMetric | null;
       population: number;
       personIds: string[];
       ready: boolean;
@@ -80,6 +81,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     signals: false,
   });
   const [interfaceHidden, setInterfaceHidden] = useState(false);
+  const [environmentOverlay, setEnvironmentOverlay] = useState<EnvironmentOverlayMetric | null>(null);
   const [showWelcome, setShowWelcome] = useState(true);
   const [importError, setImportError] = useState<string | null>(null);
   const [renderDiagnostics, setRenderDiagnostics] = useState(EMPTY_RENDER_DIAGNOSTICS);
@@ -191,6 +193,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
       cameraTransitioning: cameraDiagnostics.transitioning,
       day: projection.day,
       digest: projection.digest,
+      environmentOverlay,
       population: projection.population,
       personIds: projection.people.map((person) => person.id),
       ready: runtime.ready,
@@ -200,7 +203,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
       simulationMillisecondsPerDay: runtime.hostMetrics?.averageMillisecondsPerDay ?? null,
       usingWorker: runtime.usingWorker,
     };
-  }, [cameraDiagnostics, cameraMode, projection, renderDiagnostics, runtime.hostMetrics, runtime.ready, runtime.saveStatus, runtime.usingWorker, selection]);
+  }, [cameraDiagnostics, cameraMode, environmentOverlay, projection, renderDiagnostics, runtime.hostMetrics, runtime.ready, runtime.saveStatus, runtime.usingWorker, selection]);
 
   useEffect(() => {
     if (projection === null) return;
@@ -292,6 +295,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
         vehicles={vehicles}
         selection={selection}
         cameraMode={cameraMode}
+        environmentOverlay={interfaceHidden ? null : environmentOverlay}
         onSelect={handleSelection}
         onCameraModeChange={handleCameraMode}
         onCameraDiagnostics={setCameraDiagnostics}
@@ -311,6 +315,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
             saveStatus={runtime.saveStatus}
             usingWorker={runtime.usingWorker}
             liveWorld={runtime.liveWorld}
+            environmentOverlay={environmentOverlay}
             panelsOpen={panels}
             onTogglePause={runtime.togglePause}
             onSpeedChange={runtime.setSpeed}
@@ -318,6 +323,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
             onSave={runtime.saveNow}
             onExport={runtime.exportWorld}
             onImport={() => importInputRef.current?.click()}
+            onEnvironmentOverlayChange={setEnvironmentOverlay}
             onTogglePanel={togglePanel}
           />
           <ResourceStrip resources={projection.resources} metrics={projection.metrics} />

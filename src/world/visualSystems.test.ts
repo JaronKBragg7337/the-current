@@ -50,6 +50,7 @@ describe('crowd visual projection', () => {
     progress: 1,
     capacity: 12,
     condition: 100,
+    environment: { fertility: 78, waterQuality: 92, contamination: 1, wasteLoad: 0, status: 'healthy' },
     occupied: 3,
   };
 

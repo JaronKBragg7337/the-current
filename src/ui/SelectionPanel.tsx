@@ -125,7 +125,16 @@ export function SelectionPanel({
             <div><dt>Condition</dt><dd>{Math.round(building.condition)}%</dd></div>
             <div><dt>Capacity</dt><dd>{building.capacity}</dd></div>
             <div><dt>Present</dt><dd>{building.occupied}</dd></div>
+            <div><dt>Local status</dt><dd>{building.environment.status}</dd></div>
+            <div><dt>Soil fertility</dt><dd>{building.environment.fertility.toFixed(1)}%</dd></div>
+            <div><dt>Water quality</dt><dd>{building.environment.waterQuality.toFixed(1)}%</dd></div>
+            <div><dt>Contamination</dt><dd>{building.environment.contamination.toFixed(1)}%</dd></div>
+            <div><dt>Local waste</dt><dd>{building.environment.wasteLoad.toFixed(1)}</dd></div>
           </dl>
+          <section className="decision-card environment-card">
+            <p className="eyebrow">Local environment</p>
+            <p>Conditions around this named site affect its output and the health of people who live or work nearby. Waste and contamination spread only to neighboring sites.</p>
+          </section>
           {building.stage !== 'complete' && (
             <section className="decision-card">
               <p className="eyebrow">Physical construction</p>
