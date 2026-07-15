@@ -17,8 +17,8 @@
 // commit (esm.sh transpiles the TypeScript). To pick up engine changes,
 // push them, then redeploy this function with the new commit hash.
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@01081736957d310b60fe5f471e7be158c30880aa/src/simulation/index.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.110.6';
+import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@d471ed804c4ad18f01df04837524826f2c4276c1/src/simulation/index.ts';
 
 const WORLD_ID = 'main';
 const SHARED_SEED = 'current-shared-001';
