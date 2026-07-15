@@ -71,12 +71,21 @@ export function SelectionPanel({
               <>
                 <div>
                   <dt>Age</dt>
+                  <dd>{inspectedPerson.ageDays} days</dd>
+                </div>
+                <div>
+                  <dt>Origin</dt>
                   <dd>
-                    {inspectedPerson.ageDays} days
                     {inspectedPerson.origin === 'born'
-                      ? ' (born in the settlement)'
-                      : ` (arrived aged ${inspectedPerson.arrivalDay - inspectedPerson.birthDay})`}
+                      ? 'Born in this world'
+                      : inspectedPerson.origin === 'founder'
+                        ? `Founding resident (arrived aged ${inspectedPerson.arrivalDay - inspectedPerson.birthDay})`
+                        : `Arrived from outside this world at age ${inspectedPerson.arrivalDay - inspectedPerson.birthDay}`}
                   </dd>
+                </div>
+                <div>
+                  <dt>Time here</dt>
+                  <dd>{inspectedPerson.ageDays - (inspectedPerson.arrivalDay - inspectedPerson.birthDay)} world days</dd>
                 </div>
                 <div><dt>Money</dt><dd>¤{inspectedPerson.wealth.toFixed(1)}</dd></div>
                 <div><dt>Children</dt><dd>{inspectedPerson.childrenIds.length}</dd></div>

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalDigest,
   createSimulation,
+  footprintRect,
   restoreSimulation,
   type Person,
   type Position3,
@@ -175,11 +176,17 @@ describe('physical causality', () => {
 
     const presentProject = present.snapshot().state.buildings[project?.id ?? ''];
     const travelingProject = traveling.snapshot().state.buildings[project?.id ?? ''];
+    const presentBuilder = present.snapshot().state.people[builderId];
     const delivered = (building: typeof presentProject) =>
       (building?.deliveredMaterials.stone ?? 0) + (building?.deliveredMaterials.tools ?? 0) + (building?.deliveredMaterials.wood ?? 0);
     expect(delivered(presentProject)).toBeGreaterThan(0);
     expect(presentProject?.laborCompleted).toBeGreaterThan(0);
     expect(presentDay.events.some((event) => event.type === 'material-delivered')).toBe(true);
+    const constructionFootprint = project === undefined ? undefined : footprintRect(project.type, project.position);
+    const builderIsOutsideProject = constructionFootprint === undefined || presentBuilder === undefined ||
+      presentBuilder.position.x <= constructionFootprint.minX || presentBuilder.position.x >= constructionFootprint.maxX ||
+      presentBuilder.position.z <= constructionFootprint.minZ || presentBuilder.position.z >= constructionFootprint.maxZ;
+    expect(builderIsOutsideProject).toBe(true);
     expect(delivered(travelingProject)).toBe(0);
     expect(travelingProject?.laborCompleted).toBe(0);
     expect(travelingProject?.builderIds).toEqual([]);
