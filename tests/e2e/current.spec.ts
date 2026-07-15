@@ -28,7 +28,7 @@ async function activateVisibleButton(
   await button.evaluate((element) => (element as HTMLButtonElement).click());
 }
 
-test('loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
+test('@smoke loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 

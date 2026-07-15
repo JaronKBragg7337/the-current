@@ -39,6 +39,13 @@ npm run build
 
 For simulation changes, also run `npm run sim:150`. For UI/camera changes, run the Playwright suite and inspect the fixed-seed browser scene. Do not update a deterministic digest or screenshot simply to hide an unexplained change.
 
+## CI and delivery policy
+
+- `Lint, test, build, and simulate` plus the desktop and mobile browser smoke checks are the required release gates. `Browser extended · desktop-chromium` is manual diagnostic coverage and is deliberately not a deployment blocker.
+- The smoke test exercises a real worker-backed WebGL world, verifies rendering, and advances a deterministic day. Do not remove or weaken it to make CI green.
+- The extended desktop suite renders the full Three.js world continuously under software WebGL on a constrained GitHub runner. If that manual suite fails while required checks pass, inspect its logs and retained artifacts first. Do not repeatedly change simulation rules, rendering behavior, test interactions, or timeout values unless there is evidence of a reproducible product regression.
+- When the user asks to take a change through delivery, run the relevant checks, open a focused PR, wait for required CI, and verify the post-merge deployment. Merging or enabling auto-merge still requires the user's explicit authorization.
+
 ## Change discipline
 
 Use small domain modules and typed boundaries. Preserve existing user work. Commit meaningful working checkpoints; do not commit a knowingly broken generated cache. Update `docs/STATUS.md` truthfully when a system moves between unimplemented, partial, and verified.
