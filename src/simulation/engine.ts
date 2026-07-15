@@ -1,6 +1,12 @@
 import { canonicalDigest, canonicalStringify, cloneSerializable } from './canonical';
 import { resolveSimulationConfig } from './config';
-import { findBuildingSite, resolveNearValidSite, resolveTravelerPosition, type PlacementObstacle } from './placement';
+import {
+  BUILDING_FOOTPRINTS,
+  findBuildingSite,
+  resolveNearValidSite,
+  resolveTravelerPosition,
+  type PlacementObstacle,
+} from './placement';
 import { DeterministicRng, deterministicStream, hashSeed } from './rng';
 import {
   SIMULATION_ENGINE_VERSION,
@@ -835,6 +841,10 @@ export class CurrentSimulation {
       ? 0
       : this.rng.int(this.stateValue.config.entrantAge.min, this.stateValue.config.entrantAge.max);
     const birthDay = day - ageAtEntry;
+    // Lifespan is measured from birth, not arrival, so an immigrant who walks in
+    // already aged shares the same human ceiling as anyone born here. A drawn
+    // lifespan (65-100) always exceeds the maximum entry age (32), so no entrant
+    // arrives already past their natural death day.
     const lifespan = this.rng.int(this.stateValue.config.lifespan.min, this.stateValue.config.lifespan.max);
     const profile = origin === 'born' ? 'unskilled-generalist' : this.rng.pick(EMERGENCE_PROFILES);
     const traits = this.randomTraits();
@@ -860,7 +870,7 @@ export class CurrentSimulation {
       biologicalSex,
       birthDay,
       arrivalDay: day,
-      naturalDeathDay: day + lifespan,
+      naturalDeathDay: birthDay + lifespan,
       alive: true,
       deathDay: null,
       deathCause: null,
@@ -1259,7 +1269,7 @@ export class CurrentSimulation {
     switch (task) {
       case 'build': {
         const project = this.constructionProjectFor(person);
-        return project === undefined ? { x: 0, y: 0, z: 0 } : cloneSerializable(project.position);
+        return project === undefined ? { x: 0, y: 0, z: 0 } : this.constructionWorksitePosition(person, project);
       }
       case 'eat': buildingType = 'market'; break;
       case 'fetch-water': buildingType = 'well'; break;
@@ -1719,7 +1729,7 @@ export class CurrentSimulation {
       if (building === undefined) continue;
       const assigned = builders.filter((person) =>
         this.constructionProjectFor(person, projects)?.id === building.id &&
-        distanceSquared(person.position, building.position) <= TASK_SITE_RADIUS_METERS ** 2,
+        this.isAtTaskWorksite(person),
       );
       building.builderIds = assigned.map((person) => person.id).sort();
       const deliveryCapacity = assigned.length * this.stateValue.config.construction.materialDeliveryPerWorker;
@@ -2490,6 +2500,29 @@ export class CurrentSimulation {
     return projects[this.personAssignmentIndex(person, projects.length)];
   }
 
+  private constructionWorksitePosition(person: Person, building: Building): Position3 {
+    const footprint = BUILDING_FOOTPRINTS[building.type];
+    const clearance = building.type === 'well' ? 0.9 : 1.05;
+    const halfWidth = footprint.width / 2 + clearance;
+    const halfDepth = footprint.depth / 2 + clearance;
+    const slots: readonly [number, number][] = [
+      [-halfWidth, -halfDepth * 0.45],
+      [0, -halfDepth],
+      [halfWidth, -halfDepth * 0.45],
+      [halfWidth, halfDepth * 0.45],
+      [0, halfDepth],
+      [-halfWidth, halfDepth * 0.45],
+      [-halfWidth * 0.45, -halfDepth],
+      [halfWidth * 0.45, halfDepth],
+    ];
+    const [x = 0, z = 0] = slots[this.personAssignmentIndex(person, slots.length)] ?? [];
+    return {
+      x: round(building.position.x + x),
+      y: building.position.y,
+      z: round(building.position.z + z),
+    };
+  }
+
   private buildingForTask(person: Person, task: TaskType): Building | undefined {
     switch (task) {
       case 'build': return this.constructionProjectFor(person);
@@ -2513,6 +2546,9 @@ export class CurrentSimulation {
 
   private isAtTaskWorksite(person: Person): boolean {
     const worksite = this.buildingForTask(person, person.currentTask);
+    if (worksite !== undefined && person.currentTask === 'build') {
+      return distanceSquared(person.position, this.constructionWorksitePosition(person, worksite)) <= TASK_SITE_RADIUS_METERS ** 2;
+    }
     return worksite !== undefined && distanceSquared(person.position, worksite.position) <= TASK_SITE_RADIUS_METERS ** 2;
   }
 
@@ -2547,6 +2583,7 @@ export class CurrentSimulation {
     if (!productiveTasks.includes(person.currentTask)) return null;
     const site = this.buildingForTask(person, person.currentTask);
     if (site === undefined) return null;
+    if (person.currentTask === 'build') return this.isAtTaskWorksite(person) ? `work:${site.id}` : null;
     const radiusSquared = SHARED_CONTEXT_RADIUS_METERS ** 2;
     return distanceSquared(person.position, site.position) <= radiusSquared ? `work:${site.id}` : null;
   }

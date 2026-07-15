@@ -38,8 +38,10 @@ describe('deterministic simulation', () => {
     expect(first.metrics().population).toBe(20);
     expect(Object.values(snapshot.state.people)).toHaveLength(20);
     for (const person of Object.values(snapshot.state.people)) {
-      expect(person.naturalDeathDay - person.arrivalDay).toBeGreaterThanOrEqual(65);
-      expect(person.naturalDeathDay - person.arrivalDay).toBeLessThanOrEqual(100);
+      // Lifespan is measured from birth, so a founder who starts already aged
+      // still carries a full human lifespan rather than a fresh one from day zero.
+      expect(person.naturalDeathDay - person.birthDay).toBeGreaterThanOrEqual(65);
+      expect(person.naturalDeathDay - person.birthDay).toBeLessThanOrEqual(100);
       expect(person.name.length).toBeGreaterThan(3);
     }
   });

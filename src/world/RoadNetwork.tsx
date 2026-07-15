@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { MAIN_ROADS, type BuildingProjection } from '../simulation';
 import { createRoadRibbonGeometry, type RoadPoint } from './roadGeometry';
+import { accessPathForBuilding } from './roadAccess';
 import { terrainHeight } from './terrain';
 
 interface RoadNetworkProps {
@@ -12,29 +13,28 @@ export function RoadNetwork({ buildings }: RoadNetworkProps) {
   const geometries = useMemo(() => {
     // The main road corridors are authoritative simulation data: vehicles
     // drive exactly on them and building placement keeps clear of them.
-    const roads: { points: RoadPoint[]; halfWidth: number; main: boolean }[] = MAIN_ROADS.map((road) => ({
+    const roads: { points: RoadPoint[]; halfWidth: number; shoulder: number; main: boolean }[] = MAIN_ROADS.map((road) => ({
       points: road.points.map((point) => ({ x: point.x, z: point.z })),
       halfWidth: road.halfWidth,
+      shoulder: 0.85,
       main: true,
     }));
 
     for (const building of buildings) {
       if (building.type === 'road') continue;
-      const distanceToMain = Math.abs(building.position.z);
-      if (distanceToMain > 6) {
+      const accessPath = accessPathForBuilding(building);
+      if (accessPath !== null) {
         roads.push({
-          points: [
-            { x: building.position.x, z: 0 },
-            { x: building.position.x, z: building.position.z },
-          ],
-          halfWidth: 1.1,
+          points: accessPath,
+          halfWidth: 0.5,
+          shoulder: 0.16,
           main: false,
         });
       }
     }
     return roads.map((road) => ({
       main: road.main,
-      shoulder: createRoadRibbonGeometry(road.points, road.halfWidth + (road.main ? 0.85 : 0.42), 0.075),
+      shoulder: createRoadRibbonGeometry(road.points, road.halfWidth + road.shoulder, 0.075),
       surface: createRoadRibbonGeometry(road.points, road.halfWidth, 0.12),
       marking: road.main ? createRoadRibbonGeometry(road.points, 0.075, 0.145) : null,
     }));
@@ -53,11 +53,11 @@ export function RoadNetwork({ buildings }: RoadNetworkProps) {
       {geometries.map((road, index) => (
         <group key={road.surface.uuid}>
           <mesh geometry={road.shoulder} receiveShadow userData={{ cameraObstacle: false }}>
-            <meshStandardMaterial color={road.main ? '#8c806c' : '#826f56'} roughness={1} />
+            <meshStandardMaterial color={road.main ? '#8c806c' : '#c1b28e'} roughness={1} />
           </mesh>
           <mesh geometry={road.surface} receiveShadow userData={{ cameraObstacle: false }}>
             <meshStandardMaterial
-              color={road.main ? '#4c514f' : '#705f4c'}
+              color={road.main ? '#4c514f' : '#ab9c7f'}
               roughness={0.98}
               polygonOffset
               polygonOffsetFactor={-1}

@@ -317,7 +317,9 @@ function auditInvariants(
       people.filter((person) => person.origin === 'born').length === state.counters.births && dead.length === state.counters.deaths,
     `entrant records=${people.filter((person) => person.origin === 'entrant').length}, born records=${people.filter((person) => person.origin === 'born').length}, dead records=${dead.length}`);
   addCheck(checks, 'lifespan-bounds', people.every((person) => {
-    const lifespan = person.naturalDeathDay - person.arrivalDay;
+    // Lifespan runs from birth, so this also guarantees no one — immigrant or
+    // native — reaches a natural death age beyond the configured human ceiling.
+    const lifespan = person.naturalDeathDay - person.birthDay;
     return lifespan >= state.config.lifespan.min && lifespan <= state.config.lifespan.max;
   }), `configured=${state.config.lifespan.min}-${state.config.lifespan.max} days`);
   addCheck(checks, 'lifecycle-consistency', people.every((person) =>
