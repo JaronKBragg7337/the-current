@@ -1,4 +1,4 @@
-import type { CameraMode } from '../app/types';
+import type { CameraMode, EnvironmentOverlayMetric } from '../app/types';
 
 interface TopBarProps {
   day: number;
@@ -16,6 +16,7 @@ interface TopBarProps {
    * same thing regardless of who is watching.
    */
   liveWorld: boolean;
+  environmentOverlay: EnvironmentOverlayMetric | null;
   panelsOpen: { history: boolean; interventions: boolean; metrics: boolean; signals: boolean };
   onTogglePause: () => void;
   onSpeedChange: (speed: number) => void;
@@ -23,6 +24,7 @@ interface TopBarProps {
   onSave: () => void;
   onExport: () => void;
   onImport: () => void;
+  onEnvironmentOverlayChange: (metric: EnvironmentOverlayMetric | null) => void;
   onTogglePanel: (panel: keyof TopBarProps['panelsOpen']) => void;
 }
 export function TopBar({
@@ -35,6 +37,7 @@ export function TopBar({
   saveStatus,
   usingWorker,
   liveWorld,
+  environmentOverlay,
   panelsOpen,
   onTogglePause,
   onSpeedChange,
@@ -42,6 +45,7 @@ export function TopBar({
   onSave,
   onExport,
   onImport,
+  onEnvironmentOverlayChange,
   onTogglePanel,
 }: TopBarProps) {
   return (
@@ -106,6 +110,22 @@ export function TopBar({
         <button type="button" className={panelsOpen.interventions ? 'active' : ''} onClick={() => onTogglePanel('interventions')}>Influence</button>
         <button type="button" className={panelsOpen.signals ? 'active' : ''} onClick={() => onTogglePanel('signals')}>Signals</button>
         <button type="button" className={panelsOpen.metrics ? 'active' : ''} onClick={() => onTogglePanel('metrics')}>System</button>
+        <label className="environment-layer-control">
+          <span>Layer</span>
+          <select
+            aria-label="Environmental overlay"
+            value={environmentOverlay ?? ''}
+            onChange={(event) => {
+              const value = event.target.value;
+              onEnvironmentOverlayChange(value === '' ? null : value as EnvironmentOverlayMetric);
+            }}
+          >
+            <option value="">Off</option>
+            <option value="fertility">Soil fertility</option>
+            <option value="waterQuality">Water quality</option>
+            <option value="contamination">Contamination</option>
+          </select>
+        </label>
         {liveWorld ? (
           <div className="save-menu">
             <button type="button" className="compact-button" onClick={onExport} title="Download the current shared world snapshot">↓</button>

@@ -16,6 +16,12 @@ Disposable output belongs under ignored `benchmarks/results/`. The reviewed repo
 
 Useful options include `--sample-every`, `--roundtrip-day`, `--no-roundtrip`, and `--no-replay`; use `--help` for all options. Verification and roundtrip are enabled by default. Invalid CLI input exits 2, and a completed run with failed verification exits 1.
 
+## Current engine 0.2.0 checkpoint
+
+The 2026-07-15 engine `0.2.0` 150-day run adds building-centered environmental stocks and one corresponding accounting invariant. Seed `current-public-001` passed 24/24 checks, exact day-by-day replay, and day-75 snapshot restoration. It finished with digest `8bd8572d73878c03`, 124 living people, 9 births, 205 deaths, 60 complete buildings, 88.6557% average soil fertility, 88.2217% average well water quality, 91.4509% stored drinking-water quality, 20.7696% average contamination, and 865.2172 units of localized waste. The disposable full report is regenerated with `npm run sim:150` under `benchmarks/results/`.
+
+The reference tables below intentionally retain the prior engine `0.1.0` 150- and 500-day evidence. They are historical baselines, not current-rule outcomes.
+
 ## Fixed reference results
 
 These reports were generated on 2026-07-13 after spatial prerequisites were added to movement, work, encounters, construction, research, care, trade, and government. Both use engine `0.1.0` and schema `1`. The report's `simulationRevision` field is `null`, so Git history—not the JSON field—must bind each file to source; regenerate both reports after any engine-rule change.
@@ -92,7 +98,7 @@ The superlinear slowdown between 150 and 500 days primarily reflects growing rel
 
 ## What the invariant audit covers
 
-The 23 checks cover:
+The historical engine `0.1.0` reports contain 23 checks. Engine `0.2.0` adds a 24th check that reconciles every site's local waste with the cached settlement stock and bounds stored drinking-water quality. Collectively the checks cover:
 
 - seed, clock, schema, snapshot digest, daily replay, and midpoint restoration;
 - exactly two guaranteed entrants for every completed day and continuous daily summaries;

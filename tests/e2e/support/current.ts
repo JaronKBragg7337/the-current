@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
 export type CameraMode = 'first-person' | 'follow' | 'orbital';
+export type EnvironmentOverlayMetric = 'contamination' | 'fertility' | 'waterQuality';
 
 export interface CurrentDiagnostics {
   cameraMode: CameraMode;
@@ -9,6 +10,7 @@ export interface CurrentDiagnostics {
   cameraTransitioning: boolean;
   day: number;
   digest: string;
+  environmentOverlay: EnvironmentOverlayMetric | null;
   population: number;
   personIds: string[];
   ready: boolean;

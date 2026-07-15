@@ -16,7 +16,7 @@ reviewed observations        observer interventions
       Three.js world + cameras + inspection UI
 ```
 
-The simulation is authoritative for people, births, deaths, households, relationships, pooled resources, prices, jobs, construction, institutions, influence, and breakthroughs. Three.js visualizes projections of that state. Camera distance and frame rate do not change simulation decisions.
+The simulation is authoritative for people, births, deaths, households, relationships, pooled resources, prices, jobs, construction, building-centered environmental patches, sanitation, drinking-water quality, institutions, influence, and breakthroughs. Three.js visualizes projections of that state. Camera distance and frame rate do not change simulation decisions.
 
 That boundary is not yet universal for every visible object. Roads are presentation geometry rather than the authoritative movement graph. Vehicles, cargo descriptions, and route progress are derived from aggregate transport state and world day; they are not saved simulation entities. Those limitations are called out in the UI/documentation instead of being represented as completed logistics.
 
@@ -39,7 +39,7 @@ The engine has no React, DOM, WebGL, IndexedDB, wall-clock, or network dependenc
 
 Authoritative time advances in integer world days, with timestamped event ticks within each day. Random choices use serialized seeded streams and stable entity ordering. The core does not use `Math.random`, current dates, animation frames, browser state, or renderer collision results. Canonical serialization and explicit rounding produce a digest for every snapshot.
 
-The guarantee is scoped to simulation engine `0.1.0`, schema `1`, a saved seed/configuration, and the same ordered external inputs. The reference verifier compares every daily digest on a second run and restores through a midpoint snapshot. Schema 1 snapshots are validated, including their content digest and RNG restoration. There is no snapshot migration implementation yet; unsupported schema versions fail explicitly.
+The guarantee is scoped to simulation engine `0.2.0`, schema `1`, a saved seed/configuration, and the same ordered external inputs. The reference verifier compares every daily digest on a second run and restores through a midpoint snapshot. Schema 1 snapshots are validated, including their content digest and RNG restoration. Additive legacy schema-1 snapshots are migrated only after their incoming digest is verified: missing environmental patches, localized waste, drinking-water quality, and daily cleanup totals receive deterministic backfills. Unsupported schema versions still fail explicitly.
 
 ## Daily simulation order and spatial causality
 
@@ -48,6 +48,14 @@ At a high level, the engine applies queued inputs, creates the two scheduled ent
 People have authoritative positions, destinations, homes, and job/project assignments. Movement occurs before effects. Work, trade, research, care, governance, and construction require arrival at the relevant building/site. Encounters require physical proximity or a shared home/worksite. Births occur at the mother/home position. A person can travel at most 140 metres per world day and currently moves directly toward the destination; rendered roads do not yet constrain the path.
 
 This is a stronger causal model than globally applying jobs or friendships, but it is not local navigation. There is no navmesh, collision-aware pedestrian path, congestion, transit schedule, or authoritative vehicle ride.
+
+## Local environmental patches
+
+Every non-road building owns the condition of its surrounding land: fertility, water quality, contamination, and a physical waste stock. Household waste begins at occupied homes or public sites; tool-production waste begins at workshops; most remains at its source and a bounded share reaches nearby patches. Contamination diffusion is calculated from a frozen prior-day copy, so building record order cannot change the result.
+
+Laborers choose sanitation only when accumulated waste justifies it, travel to a named high-severity site, and remove waste only after arriving and succeeding at the task. Energy strengthens collection and transport provides durable capacity rather than being destroyed as fuel. New construction inherits nearby soil, water, and contamination instead of creating pristine land. Farms, wells, workshops, and power stations consume declared inputs; output and waste are attributed to the named producing site before its condition changes. Well production is mixed with stored water to persist an authoritative drinking-water quality whose health effect is scaled by the amount each resident actually receives.
+
+The renderer receives these values through `BuildingProjection.environment`. `EnvironmentOverlay` draws one selected site metric in one instanced call and cannot affect picking or simulation state. These facility-centered samples do not claim continuous terrain precision; a terrain grid, watershed, weather, species ecology, and industrial material chemistry remain future systems.
 
 ## Worker runtime
 

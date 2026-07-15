@@ -44,6 +44,16 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     housingTriggerRatio: 0.88,
     foodReserveTriggerDays: 5,
   },
+  environment: {
+    farmWaterPerDay: 1.2,
+    farmToolsPerDay: 0.05,
+    workshopEnergyPerDay: 0.6,
+    powerToolsPerDay: 0.12,
+    sanitationPerWorker: 0.65,
+    sanitationEnergyPerWaste: 0.08,
+    wastePerFoodConsumed: 0.05,
+    wastePerToolProduced: 0.08,
+  },
   leadership: {
     electionIntervalDays: 7,
     minimumFollowers: 2,
@@ -123,6 +133,9 @@ export function resolveSimulationConfig(patch?: DeepPartial<SimulationConfig>): 
   ];
   if (probabilities.some((value) => value < 0 || value > 1)) {
     throw new RangeError('Simulation probabilities must be between zero and one');
+  }
+  if (Object.values(config.environment).some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new RangeError('Environment flow values must be finite and non-negative');
   }
   return config;
 }

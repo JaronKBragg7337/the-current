@@ -1,6 +1,6 @@
 # Verification record
 
-Updated 2026-07-13. This record separates automated evidence, manual browser evidence, and checks that remain open. Results describe the recorded implementation checkpoint; rerun the commands after changing simulation rules, persistence, rendering, dependencies, or deployment configuration.
+Updated 2026-07-15. This record separates automated evidence, manual browser evidence, and checks that remain open. Results describe the recorded implementation checkpoint; rerun the commands after changing simulation rules, persistence, rendering, dependencies, or deployment configuration.
 
 ## Automated checks
 
@@ -8,21 +8,22 @@ Updated 2026-07-13. This record separates automated evidence, manual browser evi
 | --- | --- | --- |
 | `npm run lint` | pass, zero warnings | ESLint over source, tests, scripts, and configuration |
 | `npm run typecheck` | pass | TypeScript project references |
-| `npm run test` | 76 passed, 20 files | Simulation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, road winding, resource tiers, inspections, and camera correctness |
+| `npm run test` | 98 passed, 25 files | Simulation, environmental causality/migration/sanitation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, overlays, inspections, and camera correctness |
 | `npm run assets:validate` | pass | 0 incorporated external assets, 1 project-authored runtime bundle, 28 researched candidates; manifests, hashes, roots, and source/runtime paths valid |
 | `npm run licenses:validate` | pass | 564 resolved lockfile package paths match the committed machine-readable license inventory |
 | `npm audit --omit=dev` | pass | 0 known runtime vulnerabilities reported by npm on 2026-07-13 |
 | 150-day verifier | pass, 23/23 checks, 150 replayed days | Seed `current-public-001`, midpoint restore at day 75, digest `f13e5fe87589ffc3` |
 | 500-day verifier | pass, 23/23 checks, 500 replayed days | Seed `current-endurance-001`, midpoint restore at day 250, digest `c54644b90116daa4` |
-| Fresh 150-day verifier | pass, 23/23 checks, exact replay | Seed `current-public-001`; digest `26739dc51ad6cb37`; 173 final living people; 4,739.828 ms authoritative advance |
+| Current 150-day verifier | pass, 24/24 checks, exact replay | Engine `0.2.0`, seed `current-public-001`; digest `8bd8572d73878c03`; 124 final living people; 3,453.873 ms authoritative advance |
 | Production/base-path builds | pass at final integration | Root, `/the-current/`, and `/worlds/the-current/`; 706 modules transformed; both subpaths passed the committed static reference/fixture verifier; runtime GLB emitted at 263.73 kB |
-| Full Playwright matrix | 10 passed, 6 skipped, 0 failed | One frozen-tree invocation, one WebGL worker at a time; desktop Chromium and emulated Pixel 7 |
+| Full Playwright matrix | 11 passed, 7 skipped, 0 failed | One frozen-tree invocation, one WebGL worker at a time; desktop Chromium and emulated Pixel 7 |
 
 Vitest has focused coverage for:
 
 - identical seeds/daily digests, snapshot restoration, exact daily entrants, lifecycle accounting, 150-day acceptance behavior, and malformed configuration;
 - spatial movement before work/build/research/care/trade/government, proximity-required encounters, stable construction assignment, birth location, and follower association;
 - causal signals/interventions, resource/price/economy behavior, construction, inheritance, leadership, rare individuals, and breakthrough adoption;
+- facility-centered soil and groundwater, local waste conservation/spread, sanitation arrival and capacity, shared facility inputs, drinking-water mixing, exposure-driven health, deterministic legacy backfill, and polluted-land inheritance;
 - IndexedDB snapshot retention, same-day replacement, event/input storage, validated export/import, worker/in-process host parity, and structured asynchronous worker errors;
 - external adapter bounds, schema validation, deduplication/corroboration, confidence/novelty/decay, and conversion to simulation pressure;
 - selected-person refresh, rare-evidence thresholds, orbital FOV restoration, follow collision, obstacle ancestry, and targets inside buildings.
@@ -41,8 +42,9 @@ A production-capable Vite session was opened in Chromium with a real WebGL canva
 6. Closing and reopening the intervention panel preserved its local energy/cooldown state.
 7. Reload restored world day 3, the exact post-intervention digest, and the persisted intervention input instead of resetting or duplicating it.
 8. No application error was recorded. Chromium logged a dependency deprecation warning concerning Three.js `Clock`; this was not a simulation or render failure.
+9. The contamination layer projected authoritative per-site values in a single instanced draw call; diagnostics and building inspection exposed the same environmental state without mutating it.
 
-The final Playwright invocation exercised the configured `/the-current/` base path, WebGL and module-worker boot, exact day advance, keyboard controls, panels, same-origin external signals, causal observer intervention with durable event history, NPC selection, orbital/follow/first-person transitions, current-snapshot IndexedDB save/reload, and Pixel 7 viewport containment. Ten applicable cases passed in 4.8 minutes; six desktop-only/mobile-only duplicates were intentionally skipped by project guards. The only browser console output was the upstream Three.js `Clock` deprecation warning.
+The final Playwright invocation exercised the configured `/the-current/` base path, WebGL and module-worker boot, exact day advance, keyboard controls, panels, the environmental layer, same-origin external signals, causal observer intervention with durable event history, NPC selection, orbital/follow/first-person transitions, current-snapshot IndexedDB save/reload, and Pixel 7 viewport containment. Eleven applicable cases passed; seven desktop-only/mobile-only duplicates were intentionally skipped by project guards. The only browser console output was the upstream Three.js `Clock` deprecation warning.
 
 ## Visual evidence
 

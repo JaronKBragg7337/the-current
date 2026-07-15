@@ -57,6 +57,12 @@ interface IntervalSample {
   breakthroughAttempts: number;
   breakthroughAdoptions: number;
   buildingsComplete: number;
+  averageFertility: number;
+  averageWaterQuality: number;
+  averageContamination: number;
+  drinkingWaterQuality: number;
+  storedWaste: number;
+  wasteRemoved: number;
   saveApproximateBytes: number;
 }
 
@@ -273,6 +279,12 @@ function createSample(simulation: CurrentSimulation): IntervalSample {
     breakthroughAttempts: metrics.breakthroughAttempts,
     breakthroughAdoptions: metrics.breakthroughAdoptions,
     buildingsComplete: metrics.buildingsComplete,
+    averageFertility: metrics.averageFertility,
+    averageWaterQuality: metrics.averageWaterQuality,
+    averageContamination: metrics.averageContamination,
+    drinkingWaterQuality: metrics.drinkingWaterQuality,
+    storedWaste: metrics.storedWaste,
+    wasteRemoved: metrics.wasteRemovedLastDay,
     saveApproximateBytes: metrics.saveApproximateBytes,
   };
 }
@@ -352,8 +364,27 @@ function auditInvariants(
       Object.values(state.settlement.resources).every((value) => value >= 0) && Object.values(state.settlement.prices).every((value) => value > 0),
     `food=${metrics.foodStock}, water=${metrics.waterStock}`);
   addCheck(checks, 'physical-state-domain', Object.values(state.buildings).every((building) =>
-    allFinite([building.position.x, building.position.y, building.position.z, building.condition, building.capacity]) &&
-      building.condition >= 0 && building.condition <= 100), `${Object.keys(state.buildings).length} buildings checked`);
+    allFinite([
+      building.position.x,
+      building.position.y,
+      building.position.z,
+      building.condition,
+      building.capacity,
+      building.environment.contamination,
+      building.environment.fertility,
+      building.environment.waterQuality,
+      building.environment.wasteLoad,
+    ]) && building.condition >= 0 && building.condition <= 100 &&
+      building.environment.contamination >= 0 && building.environment.contamination <= 100 &&
+      building.environment.fertility >= 0 && building.environment.fertility <= 100 &&
+      building.environment.waterQuality >= 0 && building.environment.waterQuality <= 100 &&
+      building.environment.wasteLoad >= 0), `${Object.keys(state.buildings).length} buildings checked`);
+  const localizedWaste = Object.values(state.buildings)
+    .reduce((sum, building) => sum + building.environment.wasteLoad, 0);
+  addCheck(checks, 'environmental-stock-accounting',
+    Math.abs(localizedWaste - state.settlement.waste) < 0.01 &&
+      state.settlement.drinkingWaterQuality >= 0 && state.settlement.drinkingWaterQuality <= 100,
+    `localWaste=${round(localizedWaste)}, cachedWaste=${round(state.settlement.waste)}, drinkingQuality=${round(state.settlement.drinkingWaterQuality)}`);
   addCheck(checks, 'institution-leaders', Object.values(state.institutions).every((institution) =>
     institution.leaderId === null || state.people[institution.leaderId]?.alive === true),
   `${metrics.leaders} active leaders across ${Object.keys(state.institutions).length} institutions`);
@@ -367,6 +398,8 @@ function auditInvariants(
   addCheck(checks, 'finite-summary-metrics', allFinite([
     metrics.population, metrics.births, metrics.deaths, metrics.foodStock, metrics.waterStock,
     metrics.wealthTotal, metrics.wealthMedian, metrics.wealthGini, metrics.inheritedValue,
+    metrics.averageFertility, metrics.averageWaterQuality, metrics.averageContamination,
+    metrics.drinkingWaterQuality, metrics.storedWaste, metrics.wasteCreatedLastDay, metrics.wasteRemovedLastDay,
   ]), 'key aggregate metrics are finite');
 
   if (options.days >= 150) {

@@ -159,6 +159,8 @@
   .time-controls .primary-control { width: 36px; padding: 0; color: #102124; background: var(--gold); border-color: var(--gold); }
   .speed-control select { width: 58px; color: var(--ink); background-color: rgba(225,235,226,.08); }
   .panel-controls { justify-self: end; }
+  .environment-layer-control { display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 7px; color: var(--quiet); border: 1px solid var(--line); border-radius: 6px; font-size: .58rem; letter-spacing: .06em; text-transform: uppercase; }
+  .environment-layer-control select { max-width: 124px; color: var(--ink); background: rgba(225,235,226,.08); border: 0; font-size: .68rem; }
   .panel-controls button.active, .camera-tabs button.active, .camera-dock button.active { color: var(--gold); border-color: rgba(228, 201, 122, 0.44); background: rgba(228, 201, 122, 0.1); }
   .compact-button { width: 30px; padding: 0 !important; }
   .save-menu { padding-left: 5px; margin-left: 2px; border-left: 1px solid var(--line); }
@@ -200,7 +202,9 @@
   .timeline-list li { position: relative; display: grid; grid-template-columns: 58px 1fr; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .timeline-list li::before { position: absolute; top: 15px; left: 48px; width: 5px; height: 5px; content: ""; background: var(--aqua); border-radius: 50%; }
   .timeline-list li.event-death::before, .timeline-list li.event-shortage::before { background: var(--danger); }
+  .timeline-list li.event-environment-degraded::before { background: var(--danger); }
   .timeline-list li.event-birth::before, .timeline-list li.event-breakthrough-adopted::before { background: var(--gold); }
+  .timeline-list li.event-environment-recovered::before, .timeline-list li.event-sanitation-cleanup::before { background: var(--aqua); }
   .event-day { color: var(--quiet); font-size: .59rem; }
   .timeline-list strong { display: block; color: var(--ink); font-size: .66rem; letter-spacing: .07em; text-transform: uppercase; }
   .timeline-list p { margin-top: 4px; color: var(--muted); font-size: .72rem; line-height: 1.4; }
@@ -322,6 +326,7 @@
     .world-pulse > div:first-child { border-left: 0; }
     .panel-controls { display: flex; width: 100%; gap: 4px; overflow-x: auto; }
     .panel-controls > button { min-width: 64px; min-height: 34px; padding-inline: 6px; }
+    .environment-layer-control { flex: 0 0 auto; }
     .panel-controls .save-menu { flex: 0 0 auto; }
     .time-controls button, .time-controls select { min-height: 32px; }
     .resource-strip { top: max(168px, calc(env(safe-area-inset-top) + 166px)); left: 7px; right: 7px; padding: 3px; }

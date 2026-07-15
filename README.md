@@ -1,6 +1,6 @@
 # The Current
 
-The Current is a local-first, deterministic civilization simulation presented as a Three.js spectator world. Its inhabitants enter, move, work, meet, form households and relationships, reproduce, build, lead, experiment, inherit, and die without a player character. An observer can watch from orbit, follow an NPC, or see through an NPC's eyes, but cannot steer that person.
+The Current is a local-first, deterministic civilization simulation presented as a Three.js spectator world. Its inhabitants enter, move, work, meet, form households and relationships, reproduce, build, manage local waste and environmental pressure, lead, experiment, inherit, and die without a player character. An observer can watch from orbit, follow an NPC, or see through an NPC's eyes, but cannot steer that person.
 
 This is a working first implementation, not the finished civilization described by the specification. The population loop, persistence, worker isolation, causal inputs, and 3D spectator experience run today. Businesses, laws and ideologies, multiple settlements, road-based navigation, and long-form historical replay remain future work. See [the exact implementation status](docs/STATUS.md).
 
@@ -41,6 +41,8 @@ The runner keeps the Git worktree in place, mirrors source without secrets or ge
 
 - A seeded authoritative simulation with 20 initial people and exactly two entrants per world day.
 - Lifespans, visible life stages, needs, food and water, employment assignments, prices, relationships, reproduction, births, early and natural deaths, inheritance, construction, institutions, influence, leaders, followers, and rare breakthrough attempts.
+- Building-centered land patches with soil fertility, groundwater quality, contamination, local waste stocks, neighbor spread, sanitation labor, facility inputs, drinking-water mixing, and health consequences.
+- A selectable one-draw-call soil, water, or contamination layer plus exact local readings on every building panel.
 - Spatial prerequisites: NPCs travel before working, building, researching, governing, trading, caring, or meeting; encounters require proximity or a shared home/worksite.
 - Timestamped events, deterministic snapshots and replay, 150-day acceptance and 500-day endurance runs.
 - A module-worker runtime with an in-process startup fallback, throttled projections, single-flight/coalesced IndexedDB autosaves, snapshot retention, JSON export, and queue-barrier-protected import.
@@ -48,7 +50,7 @@ The runner keeps the Git worktree in place, mirrors source without secrets or ge
 - A procedural Three.js island settlement with terrain, water, roads, farms, staged buildings with door openings and simple interiors, articulated stylized NPCs, instanced far population, resource sites, event markers, and presentation-layer traffic.
 - Orbital, third-person follow, and view-only first-person cameras with smooth transitions, obstruction handling, selection, inspections, controls, and responsive UI.
 
-The fixed 150-day seed finished with 175 living people, 12 births, 157 deaths, 28 partnerships, 63 completed buildings, two adopted breakthroughs, and an exact replay digest. The 500-day seed finished with 184 living people after 1,000 entrants, 77 births, and 913 deaths. Both passed all 23 structural and acceptance checks. Detailed results and caveats are in [docs/HEADLESS_RESULTS.md](docs/HEADLESS_RESULTS.md).
+The engine `0.2.0` fixed 150-day seed finished with 124 living people, 9 births, 205 deaths, 16 partnerships, 60 completed buildings, 11 adopted breakthroughs, and 865.2172 units of localized waste. It passed all 24 structural and acceptance checks, exact day-by-day replay, and midpoint snapshot restoration with digest `8bd8572d73878c03`. The committed 500-day engine `0.1.0` report remains historical endurance evidence and is identified separately in [docs/HEADLESS_RESULTS.md](docs/HEADLESS_RESULTS.md).
 
 ## Controls
 
@@ -75,7 +77,7 @@ npm run sim:150
 npm run test:e2e
 ```
 
-The recorded checkpoint has 76 passing Vitest tests across 20 files. The complete Playwright matrix has 10 applicable passing cases across desktop and Pixel 7 Chromium, with 6 intentional project-specific skips. GitHub's release workflow independently passed quality, both browser projects, and Pages deployment; a post-deploy WebGL smoke test also passed against the public origin. Deterministic replay, browser evidence, and screenshots are cataloged in [docs/VERIFICATION.md](docs/VERIFICATION.md).
+The current checkpoint has 98 passing Vitest tests across 25 files. The Playwright matrix covers desktop and Pixel 7 Chromium, including the authoritative environmental overlay. GitHub's release workflow independently gates quality and both browser projects before Pages deployment; deterministic replay, browser evidence, and screenshots are cataloged in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Architecture and operations
 
@@ -96,7 +98,7 @@ The current economy is a causal prototype, not yet a complete market: prices res
 
 Roads and vehicles are presently presentation systems. NPC movement uses straight-line daily travel rather than the rendered roads, and traffic/cargo is derived from aggregate transport resources rather than authoritative vehicle inventories. Procedural appearance is renderer-derived rather than a saved inheritable genome, and death has no body or funeral sequence. The UI shows recent history but does not yet provide full historical replay.
 
-Browser saves are per-origin IndexedDB data. Intervention energy and cooldowns are client-local UI state, not shared public authority. Live inputs are manually ingested snapshots; there is no scheduled public feed or server-authoritative multi-viewer world. These boundaries are intentional and documented so visible polish is not mistaken for simulated depth.
+Private `?world=local` saves are per-origin IndexedDB data. Intervention energy and cooldowns are client-local UI state, not shared public authority. The production spectator reads one Supabase-hosted authoritative world, while live external inputs remain manually ingested snapshots rather than a scheduled public feed. These boundaries are intentional and documented so visible polish is not mistaken for simulated depth.
 
 ## Safety and license
 

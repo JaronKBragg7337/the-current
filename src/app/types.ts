@@ -1,6 +1,7 @@
 import type { BuildingProjection, PersonProjection, WorldProjection } from '../simulation';
 
 export type CameraMode = 'first-person' | 'follow' | 'orbital';
+export type EnvironmentOverlayMetric = 'contamination' | 'fertility' | 'waterQuality';
 
 export type Selection =
   | { kind: 'building'; id: string }

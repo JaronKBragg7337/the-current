@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import {
   advanceOneDay,
@@ -26,6 +26,31 @@ async function activateVisibleButton(
   // under software WebGL. HTMLButtonElement.click() still exercises the real
   // bubbling click and React handler without depending on pointer stability.
   await button.evaluate((element) => (element as HTMLButtonElement).click());
+}
+
+async function waitForCameraToStop(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    let previous: readonly number[] | null = null;
+    let stableFrames = 0;
+    while (stableFrames < 4) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const diagnostics = (window as Window & {
+        __CURRENT_DIAGNOSTICS__?: {
+          cameraPosition: readonly number[];
+          cameraTransitioning: boolean;
+        };
+      }).__CURRENT_DIAGNOSTICS__;
+      if (diagnostics === undefined || diagnostics.cameraTransitioning) {
+        stableFrames = 0;
+        continue;
+      }
+      const movement = previous === null
+        ? Number.POSITIVE_INFINITY
+        : diagnostics.cameraPosition.reduce((sum, value, index) => sum + (value - (previous?.[index] ?? value)) ** 2, 0);
+      stableFrames = movement < 0.0001 ? stableFrames + 1 : 0;
+      previous = [...diagnostics.cameraPosition];
+    }
+  });
 }
 
 test('@smoke loads the configured base path in a worker-backed WebGL world and advances a day', async ({ page, baseURL }) => {
@@ -106,6 +131,27 @@ test('desktop panels open, expose diagnostics, and close accessibly', async ({ p
   await expect(diagnosticsPanel.getByText('State digest')).toBeVisible();
   await activateVisibleButton(page.getByRole('button', { name: 'Close diagnostics' }));
   await expect(diagnosticsPanel).toHaveCount(0);
+});
+
+test('desktop environmental layer projects authoritative site conditions', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'Environmental inspection is covered once on Chromium');
+  const before = await enterWorld(page);
+  const layer = page.getByLabel('Environmental overlay');
+  await expect(layer).toHaveValue('');
+  await layer.selectOption('contamination');
+  await expect(layer).toHaveValue('contamination');
+  await expect.poll(async () => (await getDiagnostics(page)).environmentOverlay).toBe('contamination');
+  await expect.poll(async () => (await getDiagnostics(page)).render.calls).toBeGreaterThan(before.render.calls);
+
+  await page.getByRole('button', { name: 'System', exact: true }).click();
+  const diagnosticsPanel = page.getByRole('complementary', {
+    name: 'Simulation and renderer diagnostics',
+  });
+  await expect(diagnosticsPanel.getByText('Environmental loop')).toBeVisible();
+  await expect(diagnosticsPanel.getByText('Stored drinking water')).toBeVisible();
+  await expect(diagnosticsPanel.getByText('Waste removed today')).toBeVisible();
+  await waitForCameraToStop(page);
+  await page.screenshot({ path: testInfo.outputPath('environment-contamination-layer.png'), fullPage: true });
 });
 
 test('bundled external signals load without third-party requests and enter history as pressure', async ({ page }, testInfo) => {
