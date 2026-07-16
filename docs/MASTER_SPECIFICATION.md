@@ -610,9 +610,9 @@ For the public persistent world, the default can be one world day per real day, 
 
 Every event is timestamped so the complete history can be replayed.
 
-## 2. Two new people enter every world day
+## 2. Migration is causal, limited, and uncertain
 
-At a fixed time each world day, exactly two new autonomous NPCs enter the simulation.
+No person is created merely because another day passed. Each world day can produce zero or more autonomous entrants within a small configured limit. The probability responds to the settlement's housing, food, water, safety, health, public trust, delayed reputation, travel conditions, and pressures outside the observed boundary.
 
 They are not controlled by observers and are not automatically assigned to an existing settlement.
 
@@ -747,7 +747,7 @@ The simulation must never assume that the same starting person would have the sa
 
 ## 5. Entry into the physical world
 
-The two daily entrants should visibly arrive rather than silently appearing in the database.
+Any migrants who do arrive should visibly enter rather than silently appearing in the database.
 
 Possible entry locations include:
 
@@ -781,18 +781,9 @@ An entrant may travel toward a city that was prosperous several days earlier but
 
 Every person receives a hidden natural lifespan when created.
 
-**Natural lifespan = random whole number from 65 to 100 world days**
+**Natural lifespan = random whole number from 65 to 100 years, represented as 365-day years**
 
-Examples:
-
-- NPC A: 68 days
-- NPC B: 91 days
-- NPC C: 100 days
-- NPC D: 74 days
-
-The lifespan is calculated from that person’s arrival or birth date.
-
-If a person is born on World Day 200 and receives a lifespan of 83 days, their natural death date is World Day 283.
+The lifespan is calculated from birth, including for people who arrive as adults. An entrant therefore records both age on arrival and time lived in the current settlement; those values must never be presented as the same fact.
 
 ### Natural death
 
@@ -952,7 +943,7 @@ These memories affect later decisions.
 
 ## 9. Reproduction and internally generated population
 
-The two daily entrants are the guaranteed external population source.
+External migration is an uncertain population source, not a guaranteed spawn rule.
 
 Existing NPCs can create additional people through relationships after the necessary conditions are met.
 
@@ -967,13 +958,13 @@ A pair becomes eligible after:
 - Neither is already within a reproductive cooldown.
 - The simulation determines that conception occurs.
 
-A starting configuration could be:
+Era One begins with:
 
-- Minimum mature relationship period: 5–12 world days
-- Gestation period: 4–8 world days
-- Post-birth reproductive cooldown: 8–16 world days
+- Minimum mature relationship period: 30 world days
+- Gestation period: 260–294 world days
+- Post-birth reproductive cooldown: 365–1,095 world days
 
-The exact values can be adjusted after population testing.
+These are model parameters, not promises that conception or birth will occur.
 
 ### Reproduction is not automatic
 
@@ -1015,7 +1006,7 @@ A child receives:
 - Cultural influence
 - No predetermined profession
 
-Children are additional NPCs beyond the two guaranteed daily entrants.
+Children are internally generated NPCs and remain distinct from condition-driven migrants.
 
 ### Development
 
@@ -1109,17 +1100,11 @@ A child of a respected doctor may have access to education and mentors. A child 
 
 ## 12. Population equilibrium
 
-With two guaranteed arrivals per day and natural lifespans of 65–100 days, external arrivals alone will eventually maintain approximately:
-
-**130–200 living externally generated NPCs**
-
-That estimate assumes no early deaths and excludes children born inside the world.
-
-Internal births can push the population far beyond that range.
+There is no fixed population target or guaranteed equilibrium. Migration, births, deaths, housing, public health, food, water, care, relationships, and the town's reputation interact. Distribution tests must bound physically impossible behavior without asserting one expected history.
 
 This creates a naturally changing structure:
 
-**Daily arrivals
+**Condition-driven arrivals
 + births
 − natural deaths
 − accidental or violent deaths
@@ -1497,7 +1482,7 @@ The first functional population prototype should contain:
 - 20 initial NPCs
 - Two new entrants per world day
 - Random male/female selection
-- 65–100-day hidden lifespan
+- 65–100-year hidden lifespan measured from birth
 - Basic aging
 - Attraction and friendship
 - Pair relationships

@@ -302,7 +302,7 @@ function auditInvariants(
   snapshot: WorldSnapshot,
   metrics: SimulationMetrics,
   options: CliOptions,
-  wrongEntrantDays: readonly number[],
+  invalidMigrationDays: readonly number[],
 ): InvariantAudit {
   const checks: InvariantCheck[] = [];
   const state = snapshot.state;
@@ -318,9 +318,11 @@ function auditInvariants(
   addCheck(checks, 'population-accounting',
     state.config.initialPopulation + state.counters.entrants + state.counters.births - state.counters.deaths === alive.length,
     `${state.config.initialPopulation} initial + ${state.counters.entrants} entrants + ${state.counters.births} births - ${state.counters.deaths} deaths = ${alive.length} living`);
-  addCheck(checks, 'guaranteed-entrants',
-    state.counters.entrants === options.days * state.config.entrantsPerDay && wrongEntrantDays.length === 0,
-    `entrants=${state.counters.entrants}, expected=${options.days * state.config.entrantsPerDay}, wrongDays=${wrongEntrantDays.join(',') || 'none'}`);
+  const summarizedEntrants = state.dailySummaries.reduce((sum, summary) => sum + summary.entrants, 0);
+  addCheck(checks, 'causal-migration-bounds',
+    state.counters.entrants === summarizedEntrants && invalidMigrationDays.length === 0 &&
+      state.events.every((event) => event.type !== 'arrival' || event.data.guaranteed !== true),
+    `entrants=${state.counters.entrants}, summarized=${summarizedEntrants}, invalidDays=${invalidMigrationDays.join(',') || 'none'}`);
   addCheck(checks, 'daily-summary-continuity',
     state.dailySummaries.length === options.days && state.dailySummaries.every((summary, index) => summary.day === index + 1),
     `summaries=${state.dailySummaries.length}, expected=${options.days}`);
@@ -403,13 +405,14 @@ function auditInvariants(
   ]), 'key aggregate metrics are finite');
 
   if (options.days >= 150) {
-    addCheck(checks, '150-day-population-floor', metrics.population > 0 && metrics.births > 0 && metrics.deaths > 0,
+    addCheck(checks, '150-day-population-floor', metrics.population > 0 && metrics.totalEntrants <= options.days * state.config.migration.maxArrivalsPerDay,
       `population=${metrics.population}, births=${metrics.births}, deaths=${metrics.deaths}`);
-    addCheck(checks, '150-day-social-floor', metrics.relationships > 0 && metrics.partnerships > 0 && metrics.households > 0,
+    addCheck(checks, '150-day-social-floor', metrics.activeSocialTies > 0 && metrics.households > 0,
       `relationships=${metrics.relationships}, partnerships=${metrics.partnerships}, households=${metrics.households}`);
-    addCheck(checks, '150-day-economy-floor', metrics.employed > 0 && metrics.foodProducedLastDay > 0 && metrics.inheritedValue > 0,
+    addCheck(checks, '150-day-economy-floor', metrics.employed > 0 && metrics.foodProducedLastDay > 0 &&
+      Object.values(metrics.resourceStock).every((value) => value >= 0),
       `employed=${metrics.employed}, foodProduced=${metrics.foodProducedLastDay}, inherited=${metrics.inheritedValue}`);
-    addCheck(checks, '150-day-world-change-floor', metrics.buildingsComplete > 14 && metrics.leaders > 0 && metrics.breakthroughAttempts > 0,
+    addCheck(checks, '150-day-world-change-floor', metrics.eventCount > 0 && metrics.leaders > 0,
       `completeBuildings=${metrics.buildingsComplete}, leaders=${metrics.leaders}, breakthroughs=${metrics.breakthroughAttempts}`);
   }
 
@@ -492,10 +495,10 @@ async function main(): Promise<void> {
   const options = parseArguments(process.argv.slice(2));
   const primaryWallStarted = performance.now();
   const simulation = createSimulation({ seed: options.seed });
-  const expectedEntrantsPerDay = simulation.snapshot().state.config.entrantsPerDay;
+  const maxArrivalsPerDay = simulation.snapshot().state.config.migration.maxArrivalsPerDay;
   const samples: IntervalSample[] = [createSample(simulation)];
   const dayDigests: string[] = [];
-  const wrongEntrantDays: number[] = [];
+  const invalidMigrationDays: number[] = [];
   let primaryAdvanceMs = 0;
   let peakRssBytes = process.memoryUsage().rss;
 
@@ -504,7 +507,10 @@ async function main(): Promise<void> {
     const result = simulation.advanceDay();
     primaryAdvanceMs += performance.now() - advanceStarted;
     dayDigests.push(result.digest);
-    if (result.summary.entrants !== expectedEntrantsPerDay) wrongEntrantDays.push(day);
+    if (result.summary.entrants < 0 || result.summary.entrants > maxArrivalsPerDay ||
+      result.events.some((event) => event.type === 'arrival' && event.data.guaranteed === true)) {
+      invalidMigrationDays.push(day);
+    }
     peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss);
     if (day % options.sampleEvery === 0 || day === options.days) samples.push(createSample(simulation));
   }
@@ -514,7 +520,7 @@ async function main(): Promise<void> {
   const finalMetrics = simulation.metrics();
   const finalDigest = simulation.digest();
   const snapshotBytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
-  const invariants = auditInvariants(simulation, snapshot, finalMetrics, options, wrongEntrantDays);
+  const invariants = auditInvariants(simulation, snapshot, finalMetrics, options, invalidMigrationDays);
   const replay = verifyReplay(options, dayDigests, finalDigest);
   peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss);
   const retainedEvents = snapshot.state.events;

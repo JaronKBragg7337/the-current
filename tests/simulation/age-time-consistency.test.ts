@@ -10,7 +10,10 @@ import { createSimulation } from '../../src/simulation';
  */
 describe('age and world-time consistency', () => {
   const simulation = createSimulation({ seed: 'age-consistency-001' });
-  for (let day = 0; day < 90; day += 1) simulation.advanceDay();
+  // Live chronology uses real day units, so this horizon is long enough for
+  // migration, mature partnerships, gestation, and at least one native birth
+  // without compressing human lifespans merely to satisfy a test.
+  for (let day = 0; day < 500; day += 1) simulation.advanceDay();
   const state = simulation.snapshot().state;
   const people = Object.values(state.people);
   const { day } = state;

@@ -1,6 +1,6 @@
 import type { ThreeEvent } from '@react-three/fiber';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Group, Mesh } from 'three';
 import { MathUtils, Vector3 } from 'three';
 
@@ -110,7 +110,11 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
   const torsoRef = useRef<Mesh>(null);
   const { camera } = useThree();
   const target = useMemo(() => new Vector3(), []);
-  const groundHeight = useMemo(() => terrainHeight(person.position.x, person.position.z), [person.position.x, person.position.z]);
+  const [initialPosition] = useState<readonly [number, number, number]>(() => [
+    person.position.x,
+    terrainHeight(person.position.x, person.position.z),
+    person.position.z,
+  ]);
   const bodySeed = deterministicUnit(`${person.id}:body`);
   const skin = paletteValue(SKIN_TONES, deterministicUnit(`${person.id}:skin`));
   const hair = person.lifeStage === 'elder' ? '#b9b5aa' : person.lifeStage === 'older-adult' ? '#8e8980' : paletteValue(HAIR_TONES, deterministicUnit(`${person.id}:hair`));
@@ -128,18 +132,18 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
   useFrame(({ clock }, delta) => {
     const root = rootRef.current;
     if (root === null) return;
-    target.set(person.position.x, groundHeight, person.position.z);
+    target.set(person.position.x, terrainHeight(person.position.x, person.position.z), person.position.z);
     const distanceToCamera = camera.position.distanceToSquared(target);
     const cameraPersonalSpace = !selected && cameraMode !== 'orbital' && distanceToCamera < 1.45 ** 2;
     root.visible = !cameraPersonalSpace && shouldRenderDetailedPerson(distanceToCamera, selected, firstPersonSelf);
     if (!root.visible) return;
 
+    const walking = Math.hypot(root.position.x - target.x, root.position.z - target.z) > 0.015;
     root.position.x = MathUtils.damp(root.position.x, target.x, 4.5, delta);
     root.position.y = MathUtils.damp(root.position.y, target.y, 6, delta);
     root.position.z = MathUtils.damp(root.position.z, target.z, 4.5, delta);
     root.rotation.y = MathUtils.damp(root.rotation.y, person.yaw, 5, delta);
 
-    const walking = person.task === 'travel' || person.task === 'fetch-water';
     const working = ['build', 'work', 'trade', 'care', 'heal'].includes(person.task);
     const active = walking || working;
     const agePace = person.lifeStage === 'elder' ? 0.72 : person.lifeStage === 'child' ? 1.18 : 1;
@@ -168,7 +172,7 @@ export function PersonFigure({ person, selected, cameraMode, onSelect, onFollow 
     <group
       ref={rootRef}
       name={`person:${person.id}`}
-      position={[person.position.x, groundHeight, person.position.z]}
+      position={initialPosition}
       rotation={[0, person.yaw, 0]}
       scale={[heightScale * widthScale, heightScale, heightScale * widthScale]}
       onClick={handleSelect}

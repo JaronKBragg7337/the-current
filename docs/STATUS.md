@@ -1,10 +1,10 @@
 # Implementation status
 
-Updated 2026-07-15. Labels mean **verified**, **partial**, or **unimplemented**. A type, interface, visual prop, or documentation paragraph is not counted as a working system by itself.
+Updated 2026-07-16. Labels mean **verified**, **partial**, or **unimplemented**. A type, interface, visual prop, or documentation paragraph is not counted as a working system by itself.
 
 ## Checkpoint summary
 
-The Current has passed its first functional population milestone as a real deterministic simulation and a navigable Three.js spectator application. The current engine `0.2.0` fixed 150-day run passed 24/24 invariants, exact day-by-day replay, and snapshot restoration; the committed engine `0.1.0` 500-day run remains historical endurance evidence. The world kit provides proportioned citizens, construction-aware building tiers, authoritative road ribbons, visible resource yards, and stronger settlement assembly without changing simulation authority. The browser has been exercised with a real module worker, IndexedDB persistence, selection, all three camera modes, a causal intervention, environmental inspection, and exact reload of a saved state.
+The Era One candidate is engine `0.3.0`, schema `2`. Its 150-day run passes 24/24 invariants and exact replay; twelve one-year entropy futures all diverge while remaining inside accounting, migration, resource, social, and environmental bounds. The full browser matrix passes with a real module worker, IndexedDB persistence, selection, all three camera modes, causal intervention, environmental inspection, responsive Pixel 7 layout, and exact reload of a saved state. Era Zero remains frozen and archived until this candidate is merged and deployed.
 
 This is still an early civilization, not the complete master specification. It has one settlement and several causal subsystems, but not yet the breadth or depth of autonomous firms, institutions, transport, law, culture, conflict, or multi-settlement history required by the final concept.
 
@@ -16,13 +16,13 @@ This is still an early civilization, not the complete master specification. It h
 | Secret-safe repository baseline | verified | `.gitignore`, `SECURITY.md`, no credentials required at runtime |
 | Authoritative specification | verified | `docs/MASTER_SPECIFICATION.md` |
 | Dependency, data, and asset research | verified | Official-source inventories in `docs/LICENSES.md`, `docs/DATA_SOURCES.md`, and `docs/ASSETS.md`; the incorporated runtime kit is project-authored and tracked in `assets/project-assets.json` |
-| Deterministic population/lifecycle loop | verified | 98 passing tests plus current 150-day and historical 500-day reports |
-| Seed replay and snapshot roundtrip | verified | Engine `0.2.0` digest `8bd8572d73878c03`; exact 150-day replay, midpoint restore, and 24/24 checks |
+| Population/lifecycle loop | verified | 100 passing tests plus the Era One 150-day and twelve-future reports; historical Era Zero reports remain labeled separately |
+| Replay and unknown future boundary | verified | Engine `0.3.0` digest `ba8308f8d2a145f8`; exact recorded-input replay plus 12/12 distinct futures under alternate not-yet-recorded entropy |
 | Worker isolation | verified | Module worker exercised in browser; in-process startup fallback and structured worker errors have tests |
 | Local persistence | verified | IndexedDB autosave, retention, export/import, input records, restore, and day-three browser reload |
 | Three.js spectator world | verified | WebGL render, selection, orbital/follow/first-person transitions, collision handling, distance tiers, visible economy, screenshots |
 | Production/base-path builds | verified | Root, `/the-current/`, and `/worlds/the-current/` builds pass; both subpath artifacts pass static reference/fixture validation |
-| Browser automation | verified | Complete serial Playwright invocation: 10 applicable cases passed, 6 project-specific skips; no failures |
+| Browser automation | verified | Complete serial Playwright invocation: 11 applicable cases passed, 7 project-specific skips; no failures |
 | Mobile/responsive experience | verified | Pixel 7 Chromium covers worker/WebGL boot, camera transitions, and viewport containment; physical-device profiling remains future work |
 | Public preview | verified | <https://jaronkbragg7337.github.io/the-current/>; gated quality, desktop, mobile, and Pages jobs passed in [run 29243877756](https://github.com/JaronKBragg7337/the-current/actions/runs/29243877756) |
 
@@ -38,10 +38,10 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 | Traveler/building collision | verified | People passing an unrelated building are deflected to its footprint edge (deterministic, order-independent) |
 | Reputation-based following | verified | Leadership survives the founding generation dying out (previously collapsed to zero around day 125); leaderless institutions lower their follower threshold per the specification's "lack of alternatives" |
 | Layered hidden entropy | verified | `DayInputs.entropy` feeds two hash chains (surface + deep); past replays exactly from recorded inputs, future uncomputable from the seed; 6 passing tests including Postgres-jsonb key-order round-trip |
-| One shared authoritative world | verified | Supabase-hosted: `the-current-tick` edge function advances the world at a fixed pace (1 world day per real hour) with cryptographic entropy per day; world row publicly readable, entropy audit table service-role only; cron every 10 minutes; world created at day 0, digest `c9e11dc317f318a5` |
+| One shared authoritative world | historical Era Zero evidence | Supabase-hosted Era Zero advanced one world day per real hour. That world is now frozen and archived; Era One changes the pace to one real day. |
 | Shared spectator clients | verified locally | Production clients default to polling the shared world; time controls, save, and import are replaced by a LIVE badge; `?world=local` opts into a private local world; dev/tests default to local |
 | Shared-world interventions | unimplemented | Spectator clients cannot yet submit interventions to the shared world; requires a server-side intervention queue with budgets (next action) |
-| Windows-local test execution | verified | The former `act is not a function` failures no longer reproduce; all 98 tests pass locally on Windows |
+| Windows-local test execution | verified | The former `act is not a function` failures no longer reproduce; all 100 tests pass locally on Windows |
 
 ## 2026-07-15 session: local environmental feedback
 
@@ -59,7 +59,7 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 
 ### Authoritative simulation
 
-- Seeded identities, traits, aptitudes, rare potential, hidden 65–100-day natural lifespans, 20 founders, and exactly two daily entrants.
+- Seeded identities, traits, aptitudes, rare potential, 65–100-year natural lifespans, 20 founders, and condition-driven stochastic migration.
 - Daily needs, pooled resources, scarcity-responsive prices, job assignments, learning, health damage, aging, natural and early deaths.
 - Spatial movement and prerequisites for work, trade, construction, research, care, government, and encounters.
 - Contact-based relationships, partnership formation, conception, gestation, births, children, parent links, and reproduction cooldowns.

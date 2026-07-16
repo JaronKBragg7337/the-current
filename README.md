@@ -4,7 +4,7 @@ The Current is a local-first, deterministic civilization simulation presented as
 
 This is a working first implementation, not the finished civilization described by the specification. The population loop, persistence, worker isolation, causal inputs, and 3D spectator experience run today. Businesses, laws and ideologies, multiple settlements, road-based navigation, and long-form historical replay remain future work. See [the exact implementation status](docs/STATUS.md).
 
-**One shared world.** In production the application spectates a single server-hosted authoritative world that advances at a fixed pace (one world day per real hour) with hidden cryptographic entropy mixed into every day — every viewer sees the same world regardless of who is watching, nobody can pause it, speed it up, or fork it, and the future cannot be precomputed from the seed by anyone, including its operators. Append `?world=local` to run a private, fully local world instead (development builds default to local).
+**One shared world.** In production the application spectates a single server-hosted authoritative world that advances at one world day per real day. Fresh cryptographic entropy is created only when a day is resolved and is then recorded for replay, so no hidden script or saved seed contains the future. Every viewer sees the same world, and nobody can pause, accelerate, or fork it from a spectator client. Append `?world=local` to run a private local world instead (development builds default to local).
 
 ![The Current's procedural settlement in orbital view](docs/screenshots/orbital-world-final.png)
 
@@ -39,18 +39,18 @@ The runner keeps the Git worktree in place, mirrors source without secrets or ge
 
 ## What works now
 
-- A seeded authoritative simulation with 20 initial people and exactly two entrants per world day.
+- A seeded authoritative simulation with 20 initial people and condition-driven, stochastic migration; no arrival is guaranteed.
 - Lifespans, visible life stages, needs, food and water, employment assignments, prices, relationships, reproduction, births, early and natural deaths, inheritance, construction, institutions, influence, leaders, followers, and rare breakthrough attempts.
 - Building-centered land patches with soil fertility, groundwater quality, contamination, local waste stocks, neighbor spread, sanitation labor, facility inputs, drinking-water mixing, and health consequences.
 - A selectable one-draw-call soil, water, or contamination layer plus exact local readings on every building panel.
 - Spatial prerequisites: NPCs travel before working, building, researching, governing, trading, caring, or meeting; encounters require proximity or a shared home/worksite.
-- Timestamped events, deterministic snapshots and replay, 150-day acceptance and 500-day endurance runs.
+- Timestamped events, deterministic snapshots and replay, a 150-day acceptance run, and a twelve-future distribution audit that requires divergent outcomes from future entropy.
 - A module-worker runtime with an in-process startup fallback, throttled projections, single-flight/coalesced IndexedDB autosaves, snapshot retention, JSON export, and queue-barrier-protected import.
 - Causal observer interventions and normalized external signals. The bundled signal fixture is offline and deterministic; credential-free ingestion adapters run outside the browser.
 - A procedural Three.js island settlement with terrain, water, roads, farms, staged buildings with door openings and simple interiors, articulated stylized NPCs, instanced far population, resource sites, event markers, and presentation-layer traffic.
 - Orbital, third-person follow, and view-only first-person cameras with smooth transitions, obstruction handling, selection, inspections, controls, and responsive UI.
 
-The engine `0.2.0` fixed 150-day seed finished with 124 living people, 9 births, 205 deaths, 16 partnerships, 60 completed buildings, 11 adopted breakthroughs, and 865.2172 units of localized waste. It passed all 24 structural and acceptance checks, exact day-by-day replay, and midpoint snapshot restoration with digest `8bd8572d73878c03`. The committed 500-day engine `0.1.0` report remains historical endurance evidence and is identified separately in [docs/HEADLESS_RESULTS.md](docs/HEADLESS_RESULTS.md).
+Era Zero's accelerated run is archived as historical evidence. Era One uses engine `0.3.0`, real-day biology, bounded storage, fair rationing, causal migration and construction, separated social accounting, physical sanitation response, visible daily journeys, and discoverable remains from Era Zero. Current gates and qualifications are recorded in [docs/ERA_ONE_AUDIT.md](docs/ERA_ONE_AUDIT.md) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Controls
 

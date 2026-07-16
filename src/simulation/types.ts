@@ -1,5 +1,5 @@
-export const SIMULATION_SCHEMA_VERSION = 1 as const;
-export const SIMULATION_ENGINE_VERSION = '0.2.0' as const;
+export const SIMULATION_SCHEMA_VERSION = 2 as const;
+export const SIMULATION_ENGINE_VERSION = '0.3.0' as const;
 
 export type EntityId = string;
 export type PersonId = EntityId;
@@ -296,7 +296,7 @@ export interface PersonMemory {
   importance: number;
   subjectId: EntityId;
   summary: string;
-  type: RelationshipMemoryType | 'achievement' | 'arrival' | 'inheritance' | 'intervention' | 'migration';
+  type: RelationshipMemoryType | 'achievement' | 'arrival' | 'discovery' | 'inheritance' | 'intervention' | 'migration';
 }
 
 export interface Person {
@@ -336,6 +336,7 @@ export interface Person {
   possessions: ResourceLedger;
   currentTask: TaskType;
   decisionReason: string;
+  previousPosition: Position3;
   position: Position3;
   destination: Position3;
   yaw: number;
@@ -364,12 +365,14 @@ export interface Relationship {
   kind: RelationshipKind;
   affinity: number;
   attraction: number;
+  chemistry: number;
   trust: number;
   conflict: number;
   dependency: number;
   encounters: number;
   startedDay: number;
   lastInteractionDay: number;
+  endedDay: number | null;
   sharedWorkDays: number;
   memories: RelationshipMemory[];
 }
@@ -428,6 +431,19 @@ export interface Building {
   environment: EnvironmentalCondition;
   occupiedByIds: EntityId[];
   history: BuildingHistoryEntry[];
+}
+
+export interface LegacyArtifact {
+  id: EntityId;
+  name: string;
+  sourceEra: string;
+  description: string;
+  position: Position3;
+  domains: SkillDomain[];
+  discoveredDay: number | null;
+  discoveredById: PersonId | null;
+  studyDays: number;
+  studiedByIds: PersonId[];
 }
 
 export interface InstitutionPolicy {
@@ -546,6 +562,8 @@ export interface SettlementModifiers extends BreakthroughEffects {
 
 export interface SettlementDailyEconomy {
   consumption: ResourceLedger;
+  losses: ResourceLedger;
+  overflow: ResourceLedger;
   production: ResourceLedger;
   wagesPaid: number;
   valueProduced: number;
@@ -576,6 +594,8 @@ export interface Settlement {
 
 export type SimulationEventType =
   | 'arrival'
+  | 'artifact-discovered'
+  | 'artifact-studied'
   | 'birth'
   | 'breakthrough-adopted'
   | 'breakthrough-attempt'
@@ -595,9 +615,12 @@ export type SimulationEventType =
   | 'intervention-resolved'
   | 'leadership-changed'
   | 'material-delivered'
+  | 'migration-deferred'
   | 'partnership-formed'
   | 'pregnancy'
   | 'relationship-changed'
+  | 'relationship-ended'
+  | 'resource-loss'
   | 'sanitation-cleanup'
   | 'signal-received'
   | 'shortage';
@@ -632,6 +655,8 @@ export interface DailySummary {
 }
 
 export interface CumulativeCounters {
+  archivedRelationships: number;
+  artifactStudyDays: number;
   births: number;
   breakthroughAdoptions: number;
   breakthroughAttempts: number;
@@ -647,6 +672,7 @@ export interface CumulativeCounters {
 }
 
 export interface IdCounters {
+  artifact: number;
   breakthrough: number;
   building: number;
   household: number;
@@ -679,6 +705,7 @@ export interface WorldState {
   config: SimulationConfig;
   ids: IdCounters;
   people: Record<PersonId, Person>;
+  artifacts: Record<EntityId, LegacyArtifact>;
   relationships: Record<EntityId, Relationship>;
   households: Record<HouseholdId, Household>;
   buildings: Record<BuildingId, Building>;
@@ -696,7 +723,8 @@ export interface SimulationConfig {
   version: number;
   ticksPerDay: number;
   initialPopulation: number;
-  entrantsPerDay: number;
+  /** Legacy test override. Era One does not create guaranteed entrants. */
+  entrantsPerDay?: number;
   entrantAge: { min: number; max: number };
   lifespan: { min: number; max: number };
   lifeStages: {
@@ -721,6 +749,13 @@ export interface SimulationConfig {
     partnerAttraction: number;
     partnerTrust: number;
     matureRelationshipDays: number;
+    inactiveAcquaintanceDays: number;
+    romanticChemistryThreshold: number;
+  };
+  migration: {
+    baseDailyRate: number;
+    maxArrivalsPerDay: number;
+    minimumAttraction: number;
   };
   reproduction: {
     baseConceptionChance: number;
@@ -735,6 +770,7 @@ export interface SimulationConfig {
     materialDeliveryPerWorker: number;
     housingTriggerRatio: number;
     foodReserveTriggerDays: number;
+    proposalDeferralWeight: number;
   };
   environment: {
     farmWaterPerDay: number;
@@ -745,6 +781,11 @@ export interface SimulationConfig {
     sanitationEnergyPerWaste: number;
     wastePerFoodConsumed: number;
     wastePerToolProduced: number;
+  };
+  storage: {
+    baseCapacity: ResourceLedger;
+    warehouseCapacity: ResourceLedger;
+    spoilageRate: ResourceLedger;
   };
   leadership: {
     electionIntervalDays: number;
@@ -811,6 +852,7 @@ export interface DayResult {
 
 export interface SimulationMetrics {
   day: number;
+  initialPopulation: number;
   population: number;
   foundersAndEntrantsAlive: number;
   bornPopulationAlive: number;
@@ -821,7 +863,11 @@ export interface SimulationMetrics {
   earlyDeaths: number;
   households: number;
   relationships: number;
+  activeSocialTies: number;
+  historicalSocialTies: number;
+  romanticInterests: number;
   partnerships: number;
+  lifetimePartnerships: number;
   pregnancies: number;
   housingCapacity: number;
   occupiedHousing: number;
@@ -830,11 +876,17 @@ export interface SimulationMetrics {
   unemployedAdults: number;
   foodStock: number;
   waterStock: number;
+  resourceStock: ResourceLedger;
+  resourceCapacity: ResourceLedger;
+  resourceProductionLastDay: ResourceLedger;
+  resourceConsumptionLastDay: ResourceLedger;
+  resourceLossLastDay: ResourceLedger;
   foodProducedLastDay: number;
   foodConsumedLastDay: number;
   wealthTotal: number;
   wealthMedian: number;
   wealthGini: number;
+  inheritances: number;
   inheritedValue: number;
   buildingsComplete: number;
   buildingsUnderConstruction: number;
@@ -842,6 +894,9 @@ export interface SimulationMetrics {
   followerEdges: number;
   breakthroughAttempts: number;
   breakthroughAdoptions: number;
+  totalArtifacts: number;
+  discoveredArtifacts: number;
+  artifactStudyDays: number;
   activeSignals: number;
   resolvedInterventions: number;
   eventCount: number;
@@ -858,6 +913,7 @@ export interface SimulationMetrics {
 export interface PersonProjection {
   id: PersonId;
   name: string;
+  previousPosition: Position3;
   position: Position3;
   destination: Position3;
   yaw: number;
@@ -888,14 +944,19 @@ export interface BuildingProjection {
   occupied: number;
 }
 
+export type LegacyArtifactProjection = LegacyArtifact;
+
 export interface WorldProjection {
   schemaVersion: typeof SIMULATION_SCHEMA_VERSION;
   day: number;
   tick: number;
+  dayStartedAtUtc: string | null;
+  worldDayDurationMs: number | null;
   settlementId: EntityId;
   settlementName: string;
   population: number;
   people: PersonProjection[];
+  artifacts: LegacyArtifactProjection[];
   buildings: BuildingProjection[];
   resources: ResourceLedger;
   prices: ResourceLedger;

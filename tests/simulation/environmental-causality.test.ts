@@ -168,7 +168,10 @@ describe('environmental causality', () => {
   });
 
   it('inherits polluted nearby land when the town commissions a new site', () => {
-    const source = createSimulation({ seed: 'polluted-building-site', config: { entrantsPerDay: 0 } });
+    const source = createSimulation({
+      seed: 'polluted-building-site',
+      config: { entrantsPerDay: 0, construction: { proposalDeferralWeight: 0 } },
+    });
     const simulation = mutatedSimulation(source.snapshot(), (state) => {
       state.settlement.resources.food = 0;
       for (const building of Object.values(state.buildings)) {

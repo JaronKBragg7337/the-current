@@ -32,6 +32,13 @@ interface SharedWorldHead {
   digest: string;
 }
 
+interface SharedWorldSnapshotRow {
+  snapshot: WorldSnapshot;
+  digest: string;
+  genesis_at: string;
+  world_day_ms: number;
+}
+
 export async function loadSharedWorldConfig(): Promise<SharedWorldConfig | null> {
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('world');
@@ -99,12 +106,24 @@ export function useSharedWorldRuntime(config: SharedWorldConfig | null): Simulat
           return;
         }
         if (head.digest !== digestRef.current) {
-          const full = await fetchRow<{ snapshot: WorldSnapshot; digest: string }>(config, 'snapshot,digest');
+          const full = await fetchRow<SharedWorldSnapshotRow>(
+            config,
+            'snapshot,digest,genesis_at,world_day_ms',
+          );
           if (!active || full === null) return;
           const simulation = restoreSimulation(full.snapshot);
           simulationRef.current = simulation;
           digestRef.current = full.digest;
-          setProjection(simulation.projection());
+          const worldDayDurationMs = Number(full.world_day_ms);
+          const genesisMs = new Date(full.genesis_at).getTime();
+          const dayStartedAtUtc = Number.isFinite(genesisMs) && Number.isFinite(worldDayDurationMs)
+            ? new Date(genesisMs + full.snapshot.day * worldDayDurationMs).toISOString()
+            : null;
+          setProjection({
+            ...simulation.projection(),
+            dayStartedAtUtc,
+            worldDayDurationMs: Number.isFinite(worldDayDurationMs) ? worldDayDurationMs : null,
+          });
           setReady(true);
           setError(null);
         }

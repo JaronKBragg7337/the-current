@@ -22,7 +22,7 @@ import * as simulation from 'https://esm.sh/gh/JaronKBragg7337/the-current@d471e
 
 const WORLD_ID = 'main';
 const SHARED_SEED = 'current-shared-001';
-const DEFAULT_WORLD_DAY_MS = 3_600_000; // One world day per real hour.
+const DEFAULT_WORLD_DAY_MS = 86_400_000; // One world day per real day.
 const MAX_DAYS_PER_TICK = 24;
 
 function json(body: unknown, status = 200): Response {

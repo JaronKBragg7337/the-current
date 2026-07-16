@@ -1,6 +1,6 @@
 # Verification record
 
-Updated 2026-07-15. This record separates automated evidence, manual browser evidence, and checks that remain open. Results describe the recorded implementation checkpoint; rerun the commands after changing simulation rules, persistence, rendering, dependencies, or deployment configuration.
+Updated 2026-07-16. This record separates automated evidence, manual browser evidence, and checks that remain open. Results describe the recorded implementation checkpoint; rerun the commands after changing simulation rules, persistence, rendering, dependencies, or deployment configuration.
 
 ## Automated checks
 
@@ -8,19 +8,20 @@ Updated 2026-07-15. This record separates automated evidence, manual browser evi
 | --- | --- | --- |
 | `npm run lint` | pass, zero warnings | ESLint over source, tests, scripts, and configuration |
 | `npm run typecheck` | pass | TypeScript project references |
-| `npm run test` | 98 passed, 25 files | Simulation, environmental causality/migration/sanitation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, overlays, inspections, and camera correctness |
+| `npm run test` | 100 passed, 26 files | Simulation, environmental causality/migration/sanitation, daily travel presentation, spatial causality, persistence coordination, worker hosts/errors, data normalization/adapters, UI lifecycle, render tiers, overlays, inspections, and camera correctness |
 | `npm run assets:validate` | pass | 0 incorporated external assets, 1 project-authored runtime bundle, 28 researched candidates; manifests, hashes, roots, and source/runtime paths valid |
 | `npm run licenses:validate` | pass | 564 resolved lockfile package paths match the committed machine-readable license inventory |
 | `npm audit --omit=dev` | pass | 0 known runtime vulnerabilities reported by npm on 2026-07-13 |
 | 150-day verifier | pass, 23/23 checks, 150 replayed days | Seed `current-public-001`, midpoint restore at day 75, digest `f13e5fe87589ffc3` |
 | 500-day verifier | pass, 23/23 checks, 500 replayed days | Seed `current-endurance-001`, midpoint restore at day 250, digest `c54644b90116daa4` |
-| Current 150-day verifier | pass, 24/24 checks, exact replay | Engine `0.2.0`, seed `current-public-001`; digest `8bd8572d73878c03`; 124 final living people; 3,453.873 ms authoritative advance |
-| Production/base-path builds | pass at final integration | Root, `/the-current/`, and `/worlds/the-current/`; 706 modules transformed; both subpaths passed the committed static reference/fixture verifier; runtime GLB emitted at 263.73 kB |
+| Era One 150-day verifier | pass, 24/24 checks, exact replay | Engine `0.3.0`, seed `current-public-001`; digest `ba8308f8d2a145f8`; 47 final living people; 443.089 ms authoritative advance |
+| Era One twelve-future audit | pass | Twelve 365-day futures from the same genesis diverged under different daily entropy; population 57–78, migration 37–58, buildings 31–41; recorded stream replay exact |
+| Production/base-path builds | pass at final integration | Root, `/the-current/`, and `/worlds/the-current/`; 713 modules transformed; both subpaths passed the committed static reference/fixture verifier; runtime GLB emitted at 263.73 kB |
 | Full Playwright matrix | 11 passed, 7 skipped, 0 failed | One frozen-tree invocation, one WebGL worker at a time; desktop Chromium and emulated Pixel 7 |
 
 Vitest has focused coverage for:
 
-- identical seeds/daily digests, snapshot restoration, exact daily entrants, lifecycle accounting, 150-day acceptance behavior, and malformed configuration;
+- identical recorded inputs/daily digests, snapshot restoration, bounded causal migration, lifecycle accounting, 150-day acceptance behavior, many-future divergence, and malformed configuration;
 - spatial movement before work/build/research/care/trade/government, proximity-required encounters, stable construction assignment, birth location, and follower association;
 - causal signals/interventions, resource/price/economy behavior, construction, inheritance, leadership, rare individuals, and breakthrough adoption;
 - facility-centered soil and groundwater, local waste conservation/spread, sanitation arrival and capacity, shared facility inputs, drinking-water mixing, exposure-driven health, deterministic legacy backfill, and polluted-land inheritance;
@@ -81,7 +82,7 @@ The final visual-pass automated capture sampled 409 calls / 165,588 triangles / 
 
 | Requested behavior | Evidence | Qualification |
 | --- | --- | --- |
-| 20 initial NPCs; two daily entrants | verifier accounting and per-day entrant invariant | verified |
+| 20 initial NPCs; causal migration | population equation, per-day arrival cap, migration gaps, and twelve-future distribution audit | verified for Era One candidate |
 | Aging, birth, death, relationships, inheritance | unit tests, events, 150/500-day metrics | verified in the current abstract daily model |
 | Food, housing, employment, prices | unit tests and long-run metrics | causal but economically shallow; see `STATUS.md` |
 | Construction and physical change | state/event tests and staged 3D buildings | site/nav/ownership rules incomplete |
