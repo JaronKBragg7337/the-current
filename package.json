@@ -27,6 +27,7 @@
     "test:e2e:extended:desktop": "playwright test --project=desktop-chromium --grep-invert @smoke",
     "test:all": "npm run lint && npm run typecheck && npm run test && npm run build",
     "sim:150": "tsx scripts/run-simulation.ts --days 150 --seed current-public-001 --out benchmarks/results/simulation-150d.json",
+    "sim:distribution": "tsx scripts/audit-era-one-distribution.ts",
     "sim:long": "tsx scripts/run-simulation.ts --days 1000 --seed current-endurance-001 --out benchmarks/results/simulation-1000d.json",
     "data:ingest": "tsx scripts/ingest-signals.ts",
     "assets:validate": "tsx scripts/validate-assets.ts && tsx scripts/validate-project-assets.ts",

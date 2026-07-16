@@ -25,6 +25,7 @@ describe('crowd visual projection', () => {
   const person = (id: string): PersonProjection => ({
     id: id as PersonProjection['id'],
     name: id,
+    previousPosition: { x: 16, y: 0, z: 12 },
     position: { x: 16, y: 0, z: 12 },
     destination: { x: 16, y: 0, z: 12 },
     yaw: 0,

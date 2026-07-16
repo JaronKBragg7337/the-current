@@ -1,6 +1,6 @@
 import { AdaptiveDpr, Sky } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { ACESFilmicToneMapping, SRGBColorSpace } from 'three';
 
 import type { CameraMode, EnvironmentOverlayMetric, Selection, VehicleProjection } from '../app/types';
@@ -13,6 +13,7 @@ import { EnvironmentOverlay } from './EnvironmentOverlay';
 import { EventLayer } from './EventLayer';
 import { FarPopulation } from './FarPopulation';
 import { Landmarks } from './Landmarks';
+import { LegacyArtifacts } from './LegacyArtifacts';
 import { Nature } from './Nature';
 import { PersonFigure } from './PersonFigure';
 import { RoadNetwork } from './RoadNetwork';
@@ -22,6 +23,7 @@ import { Terrain } from './WorldTerrain';
 import { TrafficLayer } from './TrafficLayer';
 import { spreadCoLocatedPeople } from './crowdLayout';
 import { terrainHeight } from './terrain';
+import { presentDailyTravel } from './travelPresentation';
 
 interface WorldCanvasProps {
   projection: WorldProjection;
@@ -54,9 +56,25 @@ function WorldCanvasComponent({
   onCameraDiagnostics,
   onDiagnostics,
 }: WorldCanvasProps) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (projection.dayStartedAtUtc === null || projection.worldDayDurationMs === null) return undefined;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [projection.dayStartedAtUtc, projection.worldDayDurationMs]);
   const visualPeople = useMemo(
-    () => spreadCoLocatedPeople(projection.people, projection.buildings),
-    [projection.buildings, projection.people],
+    () => spreadCoLocatedPeople(
+      projection.people.map((person) => presentDailyTravel(
+        person,
+        projection.day,
+        projection.dayStartedAtUtc,
+        projection.worldDayDurationMs,
+        nowMs,
+      )),
+      projection.buildings,
+    ),
+    [nowMs, projection.buildings, projection.day, projection.dayStartedAtUtc, projection.people, projection.worldDayDurationMs],
   );
   const selectedPerson = selection?.kind === 'person'
     ? visualPeople.find((person) => person.id === selection.id) ?? null
@@ -133,6 +151,7 @@ function WorldCanvasComponent({
       <RoadNetwork buildings={projection.buildings} />
       <Nature />
       <Landmarks />
+      <LegacyArtifacts artifacts={projection.artifacts} />
       <EconomyLayer buildings={projection.buildings} resources={projection.resources} />
       {projection.buildings.map((building) => (
         <BuildingFigure

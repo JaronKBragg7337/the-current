@@ -67,3 +67,6 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.dmp
+
+# Supabase CLI local metadata
+supabase/.temp/

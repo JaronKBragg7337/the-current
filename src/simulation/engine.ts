@@ -42,6 +42,7 @@ import {
   type InfluenceSet,
   type Institution,
   type InstitutionKind,
+  type LegacyArtifact,
   type LifeStage,
   type MaterialRequirement,
   type NormalizedSignal,
@@ -165,6 +166,15 @@ const BUILDING_CAPACITY: Record<BuildingType, number> = {
   warehouse: 60,
   well: 10,
   workshop: 10,
+};
+
+const BUILDING_STORAGE_CAPACITY: Partial<Record<BuildingType, Partial<ResourceLedger>>> = {
+  clinic: { medicine: 60 },
+  farm: { food: 50 },
+  market: { food: 100, medicine: 20 },
+  'power-station': { energy: 120 },
+  well: { water: 180 },
+  workshop: { tools: 80 },
 };
 
 const BUILDING_REQUIREMENTS: Record<BuildingType, { labor: number; materials: MaterialRequirement }> = {
@@ -303,6 +313,8 @@ function emptyModifiers(): SettlementModifiers {
 function emptyDailyEconomy(): SettlementDailyEconomy {
   return {
     consumption: emptyResources(),
+    losses: emptyResources(),
+    overflow: emptyResources(),
     production: emptyResources(),
     valueProduced: 0,
     wagesPaid: 0,
@@ -466,8 +478,9 @@ export class CurrentSimulation {
       rngState: rng.snapshot(),
       entropy: { surface: '', deep: '' },
       config,
-      ids: { breakthrough: 0, building: 0, household: 0, institution: 0, person: 0 },
+      ids: { artifact: 0, breakthrough: 0, building: 0, household: 0, institution: 0, person: 0 },
       people: {},
+      artifacts: {},
       relationships: {},
       households: {},
       buildings: {},
@@ -479,6 +492,8 @@ export class CurrentSimulation {
       events: [],
       dailySummaries: [],
       counters: {
+        archivedRelationships: 0,
+        artifactStudyDays: 0,
         births: 0,
         breakthroughAdoptions: 0,
         breakthroughAttempts: 0,
@@ -508,6 +523,16 @@ export class CurrentSimulation {
     state.config = resolveSimulationConfig(state.config as DeepPartial<SimulationConfig>);
     if ((state as Partial<WorldState>).entropy === undefined) {
       state.entropy = { surface: '', deep: '' };
+    }
+    const legacyState = state as WorldState & { artifacts?: Record<EntityId, LegacyArtifact> };
+    if (legacyState.artifacts === undefined) legacyState.artifacts = {};
+    const legacyIds = state.ids as typeof state.ids & { artifact?: number };
+    if (legacyIds.artifact === undefined) legacyIds.artifact = Object.keys(legacyState.artifacts).length;
+    const legacyCounters = state.counters as typeof state.counters & { artifactStudyDays?: number };
+    if (legacyCounters.artifactStudyDays === undefined) legacyCounters.artifactStudyDays = 0;
+    for (const person of sortedRecordValues(state.people)) {
+      const legacy = person as Person & { previousPosition?: Position3 };
+      if (legacy.previousPosition === undefined) legacy.previousPosition = cloneSerializable(person.position);
     }
     for (const institution of sortedRecordValues(state.institutions)) {
       const legacy = institution as Institution & { followerCandidateIds?: Record<PersonId, PersonId> };
@@ -590,7 +615,7 @@ export class CurrentSimulation {
     this.resolveDueInterventions();
     this.updateAgingAndNaturalDeaths();
     this.deliverDueBirths();
-    this.addGuaranteedEntrants();
+    this.evaluateMigration();
     this.assignHousing();
     this.assignEmployment();
     this.planConstruction();
@@ -600,12 +625,15 @@ export class CurrentSimulation {
     this.runSanitation();
     this.consumeResourcesAndUpdateHealth();
     this.runEncounters();
+    this.fadeInactiveRelationships();
     this.formPartnerships();
     this.considerReproduction();
     this.progressConstruction();
     this.updateInstitutions();
     this.updateBreakthroughs();
     this.updatePersonalGrowth();
+    this.updateLegacyArtifacts();
+    this.applyStorageLimitsAndLosses();
     this.updatePricesAndEnvironment();
     this.assignHousing();
     this.pruneHistory();
@@ -749,11 +777,19 @@ export class CurrentSimulation {
     const leaders = sortedRecordValues(this.stateValue.institutions).filter((institution) => institution.leaderId !== null).length;
     const followerEdges = sortedRecordValues(this.stateValue.institutions)
       .reduce((sum, institution) => sum + Object.keys(institution.followerCandidateIds).length, 0);
+    const relationships = sortedRecordValues(this.stateValue.relationships);
+    const activeSocialTies = relationships.filter((relationship) =>
+      relationship.endedDay === null &&
+      this.stateValue.people[relationship.personAId]?.alive === true &&
+      this.stateValue.people[relationship.personBId]?.alive === true).length;
+    const romanticInterests = relationships.filter((relationship) =>
+      relationship.endedDay === null && relationship.kind === 'romantic-interest').length;
     const latest = this.stateValue.dailySummaries[this.stateValue.dailySummaries.length - 1];
     const saveApproximateBytes = this.suppressMetricSize ? 0 : canonicalStringify(this.stateValue).length;
     const environment = summarizeEnvironment(completeBuildings);
     return {
       day: this.currentDay,
+      initialPopulation: this.stateValue.config.initialPopulation,
       population: alive.length,
       foundersAndEntrantsAlive: alive.filter((person) => person.origin !== 'born').length,
       bornPopulationAlive: alive.filter((person) => person.origin === 'born').length,
@@ -765,8 +801,12 @@ export class CurrentSimulation {
       households: sortedRecordValues(this.stateValue.households).filter((household) =>
         household.memberIds.some((personId) => this.stateValue.people[personId]?.alive === true),
       ).length,
-      relationships: Object.keys(this.stateValue.relationships).length,
+      relationships: relationships.length,
+      activeSocialTies,
+      historicalSocialTies: relationships.length - activeSocialTies,
+      romanticInterests,
       partnerships: alive.filter((person) => person.partnerId !== null).length / 2,
+      lifetimePartnerships: this.stateValue.counters.partnerships,
       pregnancies: alive.filter((person) => person.pregnancy !== null).length,
       housingCapacity,
       occupiedHousing,
@@ -775,11 +815,23 @@ export class CurrentSimulation {
       unemployedAdults: adults.filter((person) => !person.employed).length,
       foodStock: round(this.stateValue.settlement.resources.food),
       waterStock: round(this.stateValue.settlement.resources.water),
+      resourceStock: cloneSerializable(this.stateValue.settlement.resources),
+      resourceCapacity: this.resourceCapacity(),
+      resourceProductionLastDay: cloneSerializable(this.stateValue.settlement.dailyEconomy.production),
+      resourceConsumptionLastDay: cloneSerializable(this.stateValue.settlement.dailyEconomy.consumption),
+      resourceLossLastDay: RESOURCE_KINDS.reduce((ledger, resource) => {
+        ledger[resource] = round(
+          this.stateValue.settlement.dailyEconomy.losses[resource] +
+          this.stateValue.settlement.dailyEconomy.overflow[resource],
+        );
+        return ledger;
+      }, emptyResources()),
       foodProducedLastDay: latest?.foodProduced ?? 0,
       foodConsumedLastDay: latest?.foodConsumed ?? 0,
       wealthTotal: round(wealthTotal),
       wealthMedian: round(wealthMedian),
       wealthGini: round(wealthGini),
+      inheritances: this.stateValue.counters.inheritances,
       inheritedValue: round(this.stateValue.counters.inheritedValue),
       buildingsComplete: complete,
       buildingsUnderConstruction: underConstruction,
@@ -787,6 +839,10 @@ export class CurrentSimulation {
       followerEdges,
       breakthroughAttempts: this.stateValue.counters.breakthroughAttempts,
       breakthroughAdoptions: this.stateValue.counters.breakthroughAdoptions,
+      totalArtifacts: Object.keys(this.stateValue.artifacts).length,
+      discoveredArtifacts: sortedRecordValues(this.stateValue.artifacts)
+        .filter((artifact) => artifact.discoveredDay !== null).length,
+      artifactStudyDays: round(this.stateValue.counters.artifactStudyDays),
       activeSignals: this.stateValue.activeSignals.length,
       resolvedInterventions: this.stateValue.interventions.filter((record) => record.resolvedDay !== null).length,
       eventCount: this.stateValue.eventSequence,
@@ -803,6 +859,7 @@ export class CurrentSimulation {
     const people: PersonProjection[] = this.alivePeople().map((person) => ({
       id: person.id,
       name: person.name,
+      previousPosition: cloneSerializable(person.previousPosition),
       position: cloneSerializable(person.position),
       destination: cloneSerializable(person.destination),
       yaw: person.yaw,
@@ -835,10 +892,13 @@ export class CurrentSimulation {
       schemaVersion: SIMULATION_SCHEMA_VERSION,
       day: this.currentDay,
       tick: this.stateValue.tick,
+      dayStartedAtUtc: null,
+      worldDayDurationMs: null,
       settlementId: this.stateValue.settlement.id,
       settlementName: this.stateValue.settlement.name,
       population: people.length,
       people,
+      artifacts: cloneSerializable(sortedRecordValues(this.stateValue.artifacts)),
       buildings,
       resources: cloneSerializable(this.stateValue.settlement.resources),
       prices: cloneSerializable(this.stateValue.settlement.prices),
@@ -880,6 +940,7 @@ export class CurrentSimulation {
         placedObstacles.push({ type: definition.type, position: { x: position.x, z: position.z } });
       }
     }
+    this.bootstrapLegacyArtifacts();
     const council = this.createInstitution('council', 'Confluence Civic Council', []);
     this.stateValue.settlement.institutionIds.push(council.id);
 
@@ -898,6 +959,44 @@ export class CurrentSimulation {
     this.stateValue.rngState = this.rng.snapshot();
   }
 
+  private bootstrapLegacyArtifacts(): void {
+    const definitions: readonly Omit<LegacyArtifact, 'id' | 'discoveredById' | 'discoveredDay' | 'studiedByIds' | 'studyDays'>[] = [
+      {
+        name: 'Buried settlement foundations',
+        sourceEra: 'Era Zero',
+        description: 'Weathered foundations preserve an earlier settlement grid and its geometric mistakes.',
+        position: { x: -56, y: 0, z: -34 },
+        domains: ['construction', 'engineering', 'research'],
+      },
+      {
+        name: 'Old well ring',
+        sourceEra: 'Era Zero',
+        description: 'A sealed stone ring retains mineral layers, tool marks, and evidence of past water use.',
+        position: { x: 49, y: 0, z: -38 },
+        domains: ['engineering', 'medicine', 'research'],
+      },
+      {
+        name: 'Survey marker fragments',
+        sourceEra: 'Era Zero',
+        description: 'Aligned fragments encode distance, orientation, and the vanished town boundary.',
+        position: { x: 55, y: 0, z: 43 },
+        domains: ['education', 'logistics', 'research'],
+      },
+    ];
+    for (const definition of definitions) {
+      this.stateValue.ids.artifact += 1;
+      const id = `artifact:${this.stateValue.ids.artifact.toString().padStart(3, '0')}`;
+      this.stateValue.artifacts[id] = {
+        ...cloneSerializable(definition),
+        id,
+        discoveredDay: null,
+        discoveredById: null,
+        studyDays: 0,
+        studiedByIds: [],
+      };
+    }
+  }
+
   private createPerson(
     origin: PersonOrigin,
     day: number,
@@ -914,7 +1013,7 @@ export class CurrentSimulation {
     const birthDay = day - ageAtEntry;
     // Lifespan is measured from birth, not arrival, so an immigrant who walks in
     // already aged shares the same human ceiling as anyone born here. A drawn
-    // lifespan (65-100) always exceeds the maximum entry age (32), so no entrant
+    // lifespan always exceeds the configured maximum entry age, so no entrant
     // arrives already past their natural death day.
     const lifespan = this.rng.int(this.stateValue.config.lifespan.min, this.stateValue.config.lifespan.max);
     const profile = origin === 'born' ? 'unskilled-generalist' : this.rng.pick(EMERGENCE_PROFILES);
@@ -986,6 +1085,7 @@ export class CurrentSimulation {
       },
       currentTask: origin === 'entrant' ? 'travel' : origin === 'born' ? 'care' : 'idle',
       decisionReason: origin === 'entrant' ? 'Searching for food, shelter, and useful work.' : 'Assessing immediate needs.',
+      previousPosition: cloneSerializable(position),
       position,
       destination: origin === 'born' ? cloneSerializable(position) : { x: 0, y: 0, z: 0 },
       yaw: 0,
@@ -1156,13 +1256,45 @@ export class CurrentSimulation {
     });
   }
 
-  private addGuaranteedEntrants(): void {
-    for (let index = 0; index < this.stateValue.config.entrantsPerDay; index += 1) {
+  private evaluateMigration(): void {
+    const config = this.stateValue.config.migration;
+    if (this.stateValue.config.entrantsPerDay === 0 || config.maxArrivalsPerDay === 0 || config.baseDailyRate === 0) return;
+    const population = Math.max(1, this.alivePeople().length);
+    const housingRoom = clamp((this.housingCapacity() - population) / population, 0, 1);
+    const foodSecurity = clamp(this.foodReserveDays() / 12, 0, 1);
+    const waterSecurity = clamp(this.waterReserveDays() / 12, 0, 1);
+    const safety = clamp(this.stateValue.settlement.safety / 100, 0, 1);
+    const trust = clamp(this.stateValue.settlement.publicTrust / 100, 0, 1);
+    const healthSecurity = 1 - clamp(Math.max(0, this.stateValue.settlement.pressure.health), 0, 1);
+    const attraction = clamp(
+      housingRoom * 0.2 + foodSecurity * 0.19 + waterSecurity * 0.19 +
+      safety * 0.16 + trust * 0.12 + healthSecurity * 0.14,
+      0,
+      1,
+    );
+    if (attraction < config.minimumAttraction) return;
+    const local = deterministicStream(this.streamSeed(), 'migration', this.currentDay);
+    // Conditions outside the visible settlement remain incomplete information.
+    // Daily entropy makes their effect unknowable before this day is resolved.
+    const outsidePressure = 0.55 + local.float() * 0.9;
+    const expected = config.baseDailyRate * outsidePressure *
+      clamp((attraction - config.minimumAttraction) / Math.max(0.01, 1 - config.minimumAttraction), 0, 1.5);
+    let arrivals = 0;
+    let remainder = expected;
+    while (arrivals < config.maxArrivalsPerDay && remainder > 0) {
+      const chance = clamp(remainder, 0, 0.82);
+      if (!local.bool(chance)) break;
+      arrivals += 1;
+      remainder = Math.max(0, remainder - 0.72);
+    }
+    for (let index = 0; index < arrivals; index += 1) {
       const entrant = this.createPerson('entrant', this.currentDay, null, null);
       this.createHousehold([entrant.id]);
       this.stateValue.counters.entrants += 1;
       this.emit('arrival', [entrant.id], `${entrant.name} arrived through the western road.`, {
-        guaranteed: true,
+        attraction: round(attraction),
+        guaranteed: false,
+        outsidePressure: round(outsidePressure),
         profile: entrant.emergenceProfile,
         sex: entrant.biologicalSex,
       });
@@ -1314,10 +1446,7 @@ export class CurrentSimulation {
         task = 'rest'; reason = 'Fatigue is limiting useful work.';
       } else if (person.homeBuildingId === null && (person.occupation === 'builder' || person.occupation === 'laborer')) {
         task = 'build'; reason = 'Housing insecurity creates direct construction incentive.';
-      } else if (
-        person.occupation === 'laborer' &&
-        this.stateValue.settlement.waste > Math.max(1, this.alivePeople().length * 0.35)
-      ) {
+      } else if (this.shouldAssignToSanitation(person)) {
         task = 'work'; reason = SANITATION_TASK_REASON;
       } else if (this.activeConstructionProjects().length > 0 && (person.occupation === 'builder' || person.occupation === 'laborer')) {
         task = 'build'; reason = 'A funded construction project needs labor and materials.';
@@ -1383,7 +1512,6 @@ export class CurrentSimulation {
 
   private runProductionAndEmployment(): void {
     const economy = this.stateValue.settlement.dailyEconomy;
-    const pressure = this.stateValue.settlement.pressure;
     const modifiers = this.stateValue.settlement.modifiers;
     const buildings = this.completeBuildings();
     const farms = buildings.filter((building) => building.type === 'farm');
@@ -1408,8 +1536,7 @@ export class CurrentSimulation {
       : wells.reduce((sum, building) => sum + facilityEnvironmentFactor(building.type, building.environment), 0) /
         wells.length;
     for (const farm of farms) {
-      const output = 16 * modifiers.foodYield * farmInputFactor * facilityEnvironmentFactor(farm.type, farm.environment) *
-        (1 - Math.max(0, pressure.food) * 0.28);
+      const output = 16 * modifiers.foodYield * farmInputFactor * facilityEnvironmentFactor(farm.type, farm.environment);
       economy.production.food += output;
       this.recordFacilityProduction(farm, 'food', output);
     }
@@ -1417,17 +1544,15 @@ export class CurrentSimulation {
     const storedWaterQuality = this.stateValue.settlement.drinkingWaterQuality;
     let producedWaterQualityMass = 0;
     for (const well of wells) {
-      const output = 82 * modifiers.waterYield * facilityEnvironmentFactor(well.type, well.environment) *
-        (1 - Math.max(0, pressure.water) * 0.3);
+      const output = 82 * modifiers.waterYield * facilityEnvironmentFactor(well.type, well.environment);
       economy.production.water += output;
       producedWaterQualityMass += output * well.environment.waterQuality;
       this.recordFacilityProduction(well, 'water', output);
     }
-    const energyPressureFactor = 1 - Math.max(0, pressure.energy) * 0.22;
-    economy.production.energy += 28 * modifiers.energyEfficiency * energyPressureFactor;
+    economy.production.energy += 28 * modifiers.energyEfficiency;
     for (const powerStation of powerStations) {
       const output = 55 * powerInputFactor * facilityEnvironmentFactor(powerStation.type, powerStation.environment) *
-        modifiers.energyEfficiency * energyPressureFactor;
+        modifiers.energyEfficiency;
       economy.production.energy += output;
       this.recordFacilityProduction(powerStation, 'energy', output);
     }
@@ -1457,7 +1582,13 @@ export class CurrentSimulation {
     }
     economy.production.water += hauledWater;
     for (const person of this.alivePeople()) {
-      if (!isAdult(person) || !person.employed || !this.canPerformProductiveTask(person) || !this.isAtTaskWorksite(person)) continue;
+      const sanitationAssignment = this.isAssignedToSanitation(person);
+      if (
+        !isAdult(person) ||
+        (!person.employed && !sanitationAssignment) ||
+        (!sanitationAssignment && !this.canPerformProductiveTask(person)) ||
+        !this.isAtTaskWorksite(person)
+      ) continue;
       const skillDomain = OCCUPATION_SKILL[person.occupation];
       const skill = person.skills[skillDomain];
       const capacity = (0.62 + person.health / 250 + person.needs.energy / 400) * (0.8 + skill / 220);
@@ -1507,6 +1638,10 @@ export class CurrentSimulation {
       if (paid < wage) this.stateValue.settlement.debt += wage - paid;
       economy.valueProduced += output * 4;
     }
+    const rawWaterProduction = economy.production.water;
+    this.curtailProductionToUsableCapacity();
+    const waterProductionRatio = rawWaterProduction <= 0 ? 1 : economy.production.water / rawWaterProduction;
+    producedWaterQualityMass *= waterProductionRatio;
     const waterAfterProduction = storedWaterBeforeProduction + economy.production.water;
     if (waterAfterProduction > 0) {
       this.stateValue.settlement.drinkingWaterQuality = round(clamp(
@@ -1518,6 +1653,50 @@ export class CurrentSimulation {
       this.stateValue.settlement.resources[resource] = round(this.stateValue.settlement.resources[resource] + economy.production[resource]);
     }
     this.stateValue.settlement.treasury += economy.valueProduced * 0.16;
+  }
+
+  /**
+   * Facilities respond to stores and expected household use instead of making
+   * goods that cannot be used or stored. External shocks and donations may
+   * still overflow later; ordinary production no longer manufactures waste
+   * merely because a warehouse is full.
+   */
+  private curtailProductionToUsableCapacity(): void {
+    const economy = this.stateValue.settlement.dailyEconomy;
+    const capacity = this.resourceCapacity();
+    const people = this.alivePeople();
+    const equivalentAdults = people.reduce(
+      (sum, person) => sum + (isAdult(person) ? 1 : this.stateValue.config.needs.childConsumptionScale),
+      0,
+    );
+    const expectedUse: ResourceLedger = {
+      energy: equivalentAdults * this.stateValue.config.needs.energyPerAdult,
+      food: equivalentAdults * this.stateValue.config.needs.foodPerAdult,
+      medicine: Math.max(0, this.stateValue.settlement.pressure.health) * people.length * 0.08,
+      stone: 0,
+      tools: 0,
+      transport: 0,
+      water: equivalentAdults * this.stateValue.config.needs.waterPerAdult,
+      wood: 0,
+    };
+    for (const project of this.activeConstructionProjects()) {
+      expectedUse.wood += Math.max(0, project.requiredMaterials.wood - project.deliveredMaterials.wood);
+      expectedUse.stone += Math.max(0, project.requiredMaterials.stone - project.deliveredMaterials.stone);
+      expectedUse.tools += Math.max(0, project.requiredMaterials.tools - project.deliveredMaterials.tools);
+    }
+    for (const resource of RESOURCE_KINDS) {
+      const produced = economy.production[resource];
+      const usable = Math.max(
+        0,
+        capacity[resource] - this.stateValue.settlement.resources[resource] + expectedUse[resource],
+      );
+      if (produced <= usable) continue;
+      const ratio = produced <= 0 ? 1 : usable / produced;
+      economy.production[resource] = round(usable);
+      for (const facility of this.facilityProductionToday.values()) {
+        facility[resource] = round(facility[resource] * ratio);
+      }
+    }
   }
 
   private produceForOccupation(
@@ -1664,19 +1843,54 @@ export class CurrentSimulation {
     const economy = this.stateValue.settlement.dailyEconomy;
     const config = this.stateValue.config.needs;
     const deaths: { person: Person; cause: string }[] = [];
-    let shortageEmitted = false;
+    const people = this.alivePeople();
+    const equivalentAdults = people.reduce(
+      (sum, person) => sum + (isAdult(person) ? 1 : config.childConsumptionScale),
+      0,
+    );
+    const demand = {
+      food: equivalentAdults * config.foodPerAdult,
+      water: equivalentAdults * config.waterPerAdult,
+      energy: equivalentAdults * config.energyPerAdult,
+    };
+    const ratios = {
+      food: demand.food <= 0 ? 1 : Math.min(1, this.stateValue.settlement.resources.food / demand.food),
+      water: demand.water <= 0 ? 1 : Math.min(1, this.stateValue.settlement.resources.water / demand.water),
+      energy: demand.energy <= 0 ? 1 : Math.min(1, this.stateValue.settlement.resources.energy / demand.energy),
+    };
+    for (const resource of ['food', 'water', 'energy'] as const) {
+      const supplied = round(demand[resource] * ratios[resource]);
+      this.stateValue.settlement.resources[resource] = round(
+        Math.max(0, this.stateValue.settlement.resources[resource] - supplied),
+      );
+      economy.consumption[resource] = round(economy.consumption[resource] + supplied);
+    }
+    if (ratios.food < 0.99 || ratios.water < 0.99 || ratios.energy < 0.99) {
+      this.emit('shortage', [SETTLEMENT_ID], 'Shared essentials were rationed across the settlement.', {
+        energyRatio: round(ratios.energy),
+        foodRatio: round(ratios.food),
+        waterRatio: round(ratios.water),
+      });
+    }
     const drinkingWaterDamage = clamp((72 - this.stateValue.settlement.drinkingWaterQuality) / 32, 0, 1) * 2.4;
-    for (const person of this.alivePeople()) {
+    for (const person of people) {
       const scale = isAdult(person) ? 1 : config.childConsumptionScale;
       const foodNeeded = config.foodPerAdult * scale;
       const waterNeeded = config.waterPerAdult * scale;
       const energyNeeded = config.energyPerAdult * scale;
-      const foodRatio = this.consumeForPerson(person, 'food', foodNeeded);
-      const waterRatio = this.consumeForPerson(person, 'water', waterNeeded);
-      const energyRatio = this.consumeForPerson(person, 'energy', energyNeeded);
-      economy.consumption.food += foodNeeded * foodRatio;
-      economy.consumption.water += waterNeeded * waterRatio;
-      economy.consumption.energy += energyNeeded * energyRatio;
+      const foodRatio = ratios.food;
+      const waterRatio = ratios.water;
+      const energyRatio = ratios.energy;
+      for (const [resource, supplied] of [
+        ['food', foodNeeded * foodRatio],
+        ['water', waterNeeded * waterRatio],
+        ['energy', energyNeeded * energyRatio],
+      ] as const) {
+        const price = this.stateValue.settlement.prices[resource] * supplied;
+        const payment = Math.min(person.wealth, price);
+        person.wealth -= payment;
+        this.stateValue.settlement.treasury += payment;
+      }
       person.needs.food = clamp(person.needs.food + foodRatio * 16 - 11);
       person.needs.water = clamp(person.needs.water + waterRatio * 18 - 13);
       person.needs.energy = clamp(person.needs.energy + energyRatio * 8 - (person.currentTask === 'build' || person.currentTask === 'work' ? 10 : 6));
@@ -1703,13 +1917,6 @@ export class CurrentSimulation {
       person.health = clamp(person.health + recovery - damage);
       person.needs.health = clamp(person.needs.health + recovery - damage * 0.8);
       person.emotion = clamp(person.emotion + (person.needs.social - 50) / 40 + (person.needs.shelter - 50) / 55 - damage * 0.5);
-      if ((foodRatio < 0.99 || waterRatio < 0.99) && !shortageEmitted) {
-        shortageEmitted = true;
-        this.emit('shortage', [SETTLEMENT_ID], 'Residents could not obtain all required food or water.', {
-          foodStock: round(this.stateValue.settlement.resources.food),
-          waterStock: round(this.stateValue.settlement.resources.water),
-        });
-      }
       if (person.health <= 0) {
         deaths.push({ person, cause: person.needs.water < 10 ? 'dehydration' : person.needs.food < 10 ? 'starvation' : 'illness and exposure' });
       } else if (person.health < 18) {
@@ -1721,17 +1928,6 @@ export class CurrentSimulation {
     }
     for (const resource of RESOURCE_KINDS) economy.consumption[resource] = round(economy.consumption[resource]);
     for (const death of deaths) if (death.person.alive) this.killPerson(death.person, death.cause, false);
-  }
-
-  private consumeForPerson(person: Person, resource: ResourceKind, amount: number): number {
-    const available = this.stateValue.settlement.resources[resource];
-    const supplied = Math.min(amount, available);
-    this.stateValue.settlement.resources[resource] = round(available - supplied);
-    const price = this.stateValue.settlement.prices[resource] * supplied;
-    const payment = Math.min(person.wealth, price);
-    person.wealth -= payment;
-    this.stateValue.settlement.treasury += payment;
-    return amount <= 0 ? 1 : supplied / amount;
   }
 
   private runEncounters(): void {
@@ -1808,13 +2004,15 @@ export class CurrentSimulation {
         personBId: personA.id < personB.id ? personB.id : personA.id,
         kind: sharedWork ? 'coworker' : 'acquaintance',
         affinity: clamp(28 + compatibility * 34 + local.int(-8, 8)),
-        attraction: clamp(30 + compatibility * 35 + local.int(-9, 10)),
+        chemistry: clamp(compatibility * 48 + local.int(0, 52)),
+        attraction: clamp(18 + compatibility * 24 + local.int(-8, 12)),
         trust: clamp(25 + compatibility * 28 + local.int(-6, 7)),
         conflict: clamp(local.int(0, 16) + Math.abs(personA.traits.aggression - personB.traits.aggression) * 0.08),
         dependency: personA.householdId === personB.householdId ? 20 : 0,
         encounters: 0,
         startedDay: this.currentDay,
         lastInteractionDay: this.currentDay,
+        endedDay: null,
         sharedWorkDays: 0,
         memories: [{ day: this.currentDay, delta: 3, summary: `${personA.name} and ${personB.name} first met.`, type: 'first-meeting' }],
       };
@@ -1822,6 +2020,9 @@ export class CurrentSimulation {
       this.emit('encounter', [personA.id, personB.id], `${personA.name} and ${personB.name} met for the first time.`, { relationshipId: id });
       this.addPersonMemory(personA, { day: this.currentDay, importance: 35, subjectId: personB.id, summary: `First met ${personB.name}.`, type: 'arrival' });
       this.addPersonMemory(personB, { day: this.currentDay, importance: 35, subjectId: personA.id, summary: `First met ${personA.name}.`, type: 'arrival' });
+    } else if (relationship.endedDay !== null) {
+      relationship.endedDay = null;
+      relationship.kind = sharedWork ? 'coworker' : 'acquaintance';
     }
     const local = deterministicStream(this.streamSeed(), 'encounter', this.currentDay, id);
     if (sharedWork) relationship.sharedWorkDays += 1;
@@ -1839,7 +2040,11 @@ export class CurrentSimulation {
     } else {
       relationship.affinity = clamp(relationship.affinity + cooperationDelta);
       relationship.trust = clamp(relationship.trust + cooperationDelta * 0.72);
-      relationship.attraction = clamp(relationship.attraction + this.personCompatibility(personA, personB) * 2.2 + local.float() * 0.8);
+      const chemistryPull = (relationship.chemistry - relationship.attraction) * 0.045;
+      relationship.attraction = clamp(
+        relationship.attraction + chemistryPull + (success ? this.personCompatibility(personA, personB) * 0.18 : 0) +
+        local.int(-2, 2) * 0.08,
+      );
       relationship.conflict = clamp(relationship.conflict - 0.35);
       if (sharedWork && local.bool(0.08)) this.addRelationshipMemory(relationship, { day: this.currentDay, delta: 3, summary: 'Successful work together strengthened the relationship.', type: 'cooperation' });
     }
@@ -1847,16 +2052,37 @@ export class CurrentSimulation {
     relationship.lastInteractionDay = this.currentDay;
     const previousKind = relationship.kind;
     if (relationship.kind !== 'partner' && relationship.kind !== 'spouse') {
-      if (relationship.trust > 72 && relationship.affinity > 74) relationship.kind = 'close-friend';
+      if (
+        relationship.chemistry >= this.stateValue.config.relationships.romanticChemistryThreshold &&
+        relationship.attraction > this.stateValue.config.relationships.partnerAttraction &&
+        relationship.trust > 48 && relationship.affinity > 52 && isAdult(personA) && isAdult(personB)
+      ) relationship.kind = 'romantic-interest';
+      else if (relationship.trust > 72 && relationship.affinity > 74) relationship.kind = 'close-friend';
       else if (relationship.trust > 57 && relationship.affinity > 60) relationship.kind = 'friend';
-      else if (relationship.attraction > 54 && relationship.affinity > 52 && isAdult(personA) && isAdult(personB)) relationship.kind = 'romantic-interest';
       else if (sharedWork) relationship.kind = 'coworker';
+      else relationship.kind = 'acquaintance';
     }
     if (!firstMeeting && previousKind !== relationship.kind) {
       this.emit('relationship-changed', [personA.id, personB.id], `${personA.name} and ${personB.name} became ${relationship.kind.replaceAll('-', ' ')}s.`, {
         previous: previousKind,
         current: relationship.kind,
       });
+    }
+  }
+
+  private fadeInactiveRelationships(): void {
+    const threshold = this.stateValue.config.relationships.inactiveAcquaintanceDays;
+    for (const relationship of sortedRecordValues(this.stateValue.relationships)) {
+      if (relationship.endedDay !== null || relationship.kind === 'partner' || relationship.kind === 'spouse') continue;
+      if (this.currentDay - relationship.lastInteractionDay < threshold) continue;
+      relationship.endedDay = this.currentDay;
+      this.stateValue.counters.archivedRelationships += 1;
+      this.emit(
+        'relationship-ended',
+        [relationship.personAId, relationship.personBId],
+        'A social tie faded after a long period without contact.',
+        { relationshipId: relationship.id },
+      );
     }
   }
 
@@ -1876,6 +2102,7 @@ export class CurrentSimulation {
   private formPartnerships(): void {
     const config = this.stateValue.config.relationships;
     for (const relationship of sortedRecordValues(this.stateValue.relationships)) {
+      if (relationship.endedDay !== null) continue;
       if (relationship.kind !== 'romantic-interest' && relationship.kind !== 'close-friend') continue;
       const left = this.stateValue.people[relationship.personAId];
       const right = this.stateValue.people[relationship.personBId];
@@ -1963,20 +2190,82 @@ export class CurrentSimulation {
     const alive = this.alivePeople().length;
     const housingRatio = alive / Math.max(1, this.housingCapacity());
     const queuedTypes = new Set(active.map((building) => building.type));
-    let type: BuildingType | null = null;
-    if (this.foodReserveDays() < this.stateValue.config.construction.foodReserveTriggerDays && !queuedTypes.has('farm')) type = 'farm';
-    else if (housingRatio > this.stateValue.config.construction.housingTriggerRatio && !queuedTypes.has('house')) type = 'house';
-    else if (this.waterReserveDays() < 5 && !queuedTypes.has('well')) type = 'well';
-    else if (alive >= 45 && this.energyReserveDays() < 3 && this.completeBuildings().filter((building) => building.type === 'power-station').length < Math.ceil(alive / 70) && !queuedTypes.has('power-station')) type = 'power-station';
-    else if (alive >= 55 && this.completeBuildings().filter((building) => building.type === 'school').length < 2 && !queuedTypes.has('school')) type = 'school';
-    else if (alive >= 70 && this.completeBuildings().filter((building) => building.type === 'clinic').length < 2 && !queuedTypes.has('clinic')) type = 'clinic';
-    if (type === null) return;
-    const local = deterministicStream(this.streamSeed(), 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
-    const position = findBuildingSite(local, type, sortedRecordValues(this.stateValue.buildings));
+    const complete = this.completeBuildings();
+    const completeCount = (type: BuildingType): number => complete.filter((building) => building.type === type).length;
+    const equivalentAdults = this.alivePeople().reduce(
+      (sum, person) => sum + (isAdult(person) ? 1 : this.stateValue.config.needs.childConsumptionScale),
+      0,
+    );
+    const foodDemand = equivalentAdults * this.stateValue.config.needs.foodPerAdult;
+    const waterDemand = equivalentAdults * this.stateValue.config.needs.waterPerAdult;
+    const energyDemand = equivalentAdults * this.stateValue.config.needs.energyPerAdult;
+    const futureCount = (type: BuildingType): number => completeCount(type) + active.filter((building) => building.type === type).length * 0.7;
+    const projectedFood = futureCount('farm') * 16;
+    const projectedWater = futureCount('well') * 82;
+    const projectedEnergy = 28 + futureCount('power-station') * 48 +
+      this.alivePeople().filter((person) => person.occupation === 'mechanic' || person.occupation === 'inventor').length * 0.9;
+    const candidates: { value: BuildingType; weight: number; reason: string }[] = [];
+    const addCandidate = (type: BuildingType, weight: number, reason: string): void => {
+      if (weight <= 0 || queuedTypes.has(type)) return;
+      const policyBonus = this.primaryInstitution()?.policy.constructionPriority === type ? 0.18 : 0;
+      candidates.push({ value: type, weight: Math.max(0.01, weight + policyBonus), reason });
+    };
+    const foodCapacityGap = foodDemand <= 0 ? 0 : clamp((foodDemand * 1.12 - projectedFood) / (foodDemand * 1.12), 0, 1);
+    const waterCapacityGap = waterDemand <= 0 ? 0 : clamp((waterDemand * 1.12 - projectedWater) / (waterDemand * 1.12), 0, 1);
+    const energyCapacityGap = energyDemand <= 0 ? 0 : clamp((energyDemand * 1.12 - projectedEnergy) / (energyDemand * 1.12), 0, 1);
+    addCandidate(
+      'farm',
+      Math.max(foodCapacityGap, clamp((this.stateValue.config.construction.foodReserveTriggerDays - this.foodReserveDays()) / 5, 0, 1)),
+      'Food reserves and projected farm output are being compared with expected demand.',
+    );
+    addCandidate(
+      'well',
+      Math.max(waterCapacityGap, clamp((5 - this.waterReserveDays()) / 5, 0, 1)),
+      'Water storage and the output of completed and active wells may not cover expected demand.',
+    );
+    addCandidate(
+      'power-station',
+      Math.max(energyCapacityGap, clamp((3 - this.energyReserveDays()) / 3, 0, 1)),
+      'Stored energy and projected generation may not cover expected demand.',
+    );
+    addCandidate(
+      'house',
+      clamp((housingRatio - this.stateValue.config.construction.housingTriggerRatio) /
+        Math.max(0.05, 1.2 - this.stateValue.config.construction.housingTriggerRatio), 0, 1.2),
+      'Household formation and current occupancy are reducing available housing.',
+    );
+    if (alive >= 55 && completeCount('school') < Math.ceil(alive / 45)) {
+      addCandidate('school', 0.34, 'Education capacity is falling behind the settlement population.');
+    }
+    if (alive >= 70 && completeCount('clinic') < Math.ceil(alive / 55)) {
+      addCandidate('clinic', 0.38 + Math.max(0, this.stateValue.settlement.pressure.health) * 0.4, 'Care capacity and health pressure justify a clinic proposal.');
+    }
+    if (candidates.length === 0) return;
+    const decision = deterministicStream(this.streamSeed(), 'construction-proposal', this.currentDay, this.stateValue.ids.building + 1);
+    const selected = decision.weightedPick<{ type: BuildingType; reason: string } | null>([
+      ...candidates.map((candidate) => ({
+        value: { type: candidate.value, reason: candidate.reason },
+        weight: candidate.weight,
+      })),
+      { value: null, weight: this.stateValue.config.construction.proposalDeferralWeight },
+    ]);
+    if (selected === null) return;
+    const type = selected.type;
+    const siteLocal = deterministicStream(this.streamSeed(), 'building-site', this.currentDay, type, this.stateValue.ids.building + 1);
+    const position = findBuildingSite(siteLocal, type, sortedRecordValues(this.stateValue.buildings));
     if (position === null) return;
-    const commissioner = this.primaryInstitution()?.id ?? null;
+    const possibleProposers = this.alivePeople().filter((person) =>
+      person.occupation === 'organizer' || person.occupation === 'builder' || person.occupation === 'laborer');
+    const proposer = possibleProposers.length === 0
+      ? undefined
+      : decision.weightedPick(possibleProposers.map((person) => ({
+        value: person,
+        weight: 1 + person.influence.political / 20 + person.skills.construction / 35 + person.traits.ambition / 100,
+      })));
+    const commissioner = proposer?.id ?? this.primaryInstitution()?.id ?? null;
     const building = this.createBuilding(type, position, false, commissioner);
-    this.emit('construction-proposed', [building.id], `${building.name} was commissioned in response to ${type === 'house' ? 'housing demand' : `${type} capacity pressure`}.`, {
+    this.emit('construction-proposed', [building.id, ...(proposer === undefined ? [] : [proposer.id])], `${proposer?.name ?? 'The civic council'} proposed ${building.name}.`, {
+      reason: selected.reason,
       type,
     });
   }
@@ -1999,6 +2288,9 @@ export class CurrentSimulation {
         const delivered = Math.min(need, this.stateValue.settlement.resources[resource], deliveryCapacity / 3);
         building.deliveredMaterials[resource] = round(building.deliveredMaterials[resource] + delivered);
         this.stateValue.settlement.resources[resource] = round(this.stateValue.settlement.resources[resource] - delivered);
+        this.stateValue.settlement.dailyEconomy.consumption[resource] = round(
+          this.stateValue.settlement.dailyEconomy.consumption[resource] + delivered,
+        );
         deliveredTotal += delivered;
       }
       if (deliveredTotal > 0) {
@@ -2381,6 +2673,7 @@ export class CurrentSimulation {
       .filter((building) => building.type !== 'road')
       .map((building) => ({ type: building.type, position: { x: building.position.x, z: building.position.z } }));
     for (const person of this.alivePeople()) {
+      person.previousPosition = cloneSerializable(person.position);
       const dx = person.destination.x - person.position.x;
       const dz = person.destination.z - person.position.z;
       const distance = Math.sqrt(dx * dx + dz * dz);
@@ -2426,6 +2719,68 @@ export class CurrentSimulation {
     }
   }
 
+  private updateLegacyArtifacts(): void {
+    const investigators = this.alivePeople()
+      .filter((person) => isAdult(person) && person.lastTaskSuccess && (
+        person.occupation === 'explorer' || person.occupation === 'researcher' || person.occupation === 'inventor'
+      ))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    for (const artifact of sortedRecordValues(this.stateValue.artifacts)) {
+      if (artifact.discoveredDay !== null || investigators.length === 0) continue;
+      const local = deterministicStream(this.deepStreamSeed(), 'artifact-discovery', this.currentDay, artifact.id);
+      const investigator = local.pick(investigators);
+      const chance = clamp(0.002 + (investigator.traits.curiosity + investigator.knowledge) / 15_000, 0.002, 0.03);
+      if (!local.bool(chance)) continue;
+      artifact.discoveredDay = this.currentDay;
+      artifact.discoveredById = investigator.id;
+      artifact.studiedByIds = [investigator.id];
+      this.emit(
+        'artifact-discovered',
+        [artifact.id, investigator.id],
+        `${investigator.name} recognized ${artifact.name.toLowerCase()} as material from Era Zero.`,
+        { domains: artifact.domains.join(','), sourceEra: artifact.sourceEra },
+      );
+      this.addPersonMemory(investigator, {
+        day: this.currentDay,
+        importance: 82,
+        subjectId: artifact.id,
+        summary: `Discovered ${artifact.name}.`,
+        type: 'discovery',
+      });
+    }
+
+    const discovered = sortedRecordValues(this.stateValue.artifacts)
+      .filter((artifact) => artifact.discoveredDay !== null);
+    if (discovered.length === 0) return;
+    const researchers = investigators.filter((person) =>
+      person.currentTask === 'research' && (person.occupation === 'researcher' || person.occupation === 'inventor'),
+    );
+    for (const researcher of researchers) {
+      const artifact = discovered[this.personAssignmentIndex(researcher, discovered.length)];
+      if (artifact === undefined) continue;
+      const effort = round(0.35 + researcher.knowledge / 220);
+      const previousStudyDays = artifact.studyDays;
+      artifact.studyDays = round(artifact.studyDays + effort);
+      this.stateValue.counters.artifactStudyDays = round(this.stateValue.counters.artifactStudyDays + effort);
+      if (!artifact.studiedByIds.includes(researcher.id)) artifact.studiedByIds.push(researcher.id);
+      artifact.studiedByIds.sort();
+      researcher.knowledge = clamp(researcher.knowledge + 0.08 * effort);
+      for (const domain of artifact.domains) {
+        researcher.skills[domain] = clamp(researcher.skills[domain] + 0.035 * effort);
+      }
+      const previousMilestone = Math.floor(previousStudyDays / 25);
+      const currentMilestone = Math.floor(artifact.studyDays / 25);
+      if (currentMilestone > previousMilestone) {
+        this.emit(
+          'artifact-studied',
+          [artifact.id, researcher.id],
+          `Study of ${artifact.name.toLowerCase()} connected Era Zero evidence to present knowledge.`,
+          { studyDays: round(artifact.studyDays) },
+        );
+      }
+    }
+  }
+
   private updateSignalPressures(): void {
     const pressure = emptyPressure();
     const active: ActiveSignal[] = [];
@@ -2454,6 +2809,9 @@ export class CurrentSimulation {
     const environment = summarizeEnvironment(this.completeBuildings());
     const wastePerResident = this.stateValue.settlement.waste / Math.max(1, this.alivePeople().length);
     const unsafeWater = clamp((72 - this.stateValue.settlement.drinkingWaterQuality) / 72, 0, 1);
+    pressure.food += clamp((5 - this.foodReserveDays()) / 5, 0, 1) * 0.8;
+    pressure.water += clamp((5 - this.waterReserveDays()) / 5, 0, 1) * 0.8;
+    pressure.energy += clamp((3 - this.energyReserveDays()) / 3, 0, 1) * 0.85;
     pressure.water += unsafeWater * 0.55;
     pressure.health += clamp(
       wastePerResident * 0.12 + environment.averageContamination / 100 * 0.5,
@@ -2694,6 +3052,51 @@ export class CurrentSimulation {
     }
   }
 
+  private resourceCapacity(): ResourceLedger {
+    const capacity = cloneSerializable(this.stateValue.config.storage.baseCapacity);
+    for (const building of this.completeBuildings()) {
+      if (building.type === 'warehouse') {
+        for (const resource of RESOURCE_KINDS) {
+          capacity[resource] += this.stateValue.config.storage.warehouseCapacity[resource];
+        }
+      }
+      const local = BUILDING_STORAGE_CAPACITY[building.type];
+      if (local === undefined) continue;
+      for (const resource of RESOURCE_KINDS) capacity[resource] += local[resource] ?? 0;
+    }
+    for (const resource of RESOURCE_KINDS) capacity[resource] = round(capacity[resource]);
+    return capacity;
+  }
+
+  private applyStorageLimitsAndLosses(): void {
+    const economy = this.stateValue.settlement.dailyEconomy;
+    const capacity = this.resourceCapacity();
+    const eventData: Record<string, EventDatum> = {};
+    let totalLoss = 0;
+    let totalOverflow = 0;
+    for (const resource of RESOURCE_KINDS) {
+      const stock = this.stateValue.settlement.resources[resource];
+      const loss = round(Math.min(stock, stock * this.stateValue.config.storage.spoilageRate[resource]));
+      const afterLoss = round(Math.max(0, stock - loss));
+      const overflow = round(Math.max(0, afterLoss - capacity[resource]));
+      this.stateValue.settlement.resources[resource] = round(afterLoss - overflow);
+      economy.losses[resource] = round(economy.losses[resource] + loss);
+      economy.overflow[resource] = round(economy.overflow[resource] + overflow);
+      if (loss > 0) eventData[`${resource}Loss`] = loss;
+      if (overflow > 0) eventData[`${resource}Overflow`] = overflow;
+      totalLoss += loss;
+      totalOverflow += overflow;
+    }
+    if (totalLoss > 0 || totalOverflow > 0) {
+      this.emit(
+        'resource-loss',
+        [SETTLEMENT_ID],
+        `Storage lost ${round(totalLoss)} units and rejected ${round(totalOverflow)} overflow units.`,
+        eventData,
+      );
+    }
+  }
+
   private updatePricesAndEnvironment(): void {
     const economy = this.stateValue.settlement.dailyEconomy;
     for (const resource of RESOURCE_KINDS) {
@@ -2704,7 +3107,8 @@ export class CurrentSimulation {
       this.stateValue.settlement.prices[resource] = round(clamp(this.stateValue.settlement.prices[resource] * 0.78 + target * 0.22, 0.1, 100));
     }
     const environmentConfig = this.stateValue.config.environment;
-    const foodWaste = economy.consumption.food * environmentConfig.wastePerFoodConsumed;
+    const foodWaste = economy.consumption.food * environmentConfig.wastePerFoodConsumed +
+      economy.losses.food + economy.overflow.food;
     const toolWaste = economy.production.tools * environmentConfig.wastePerToolProduced;
     economy.wasteCreated = round(foodWaste + toolWaste);
     const buildings = sortedRecordValues(this.stateValue.buildings);
@@ -2813,6 +3217,15 @@ export class CurrentSimulation {
         this.addPersonMemory(partner, { day: this.currentDay, importance: 100, subjectId: person.id, summary: `${person.name} died.`, type: 'inheritance' });
       }
     }
+    for (const relationship of sortedRecordValues(this.stateValue.relationships)) {
+      if (
+        relationship.endedDay === null &&
+        (relationship.personAId === person.id || relationship.personBId === person.id)
+      ) {
+        relationship.endedDay = this.currentDay;
+        this.stateValue.counters.archivedRelationships += 1;
+      }
+    }
     for (const institution of sortedRecordValues(this.stateValue.institutions)) {
       institution.memberIds = institution.memberIds.filter((id) => id !== person.id);
       delete institution.followerCandidateIds[person.id];
@@ -2878,7 +3291,7 @@ export class CurrentSimulation {
     return {
       day: this.currentDay,
       population: alive.length,
-      entrants: events.filter((event) => event.type === 'arrival' && event.data.guaranteed === true).length,
+      entrants: events.filter((event) => event.type === 'arrival').length,
       births: events.filter((event) => event.type === 'birth').length,
       deaths: events.filter((event) => event.type === 'death').length,
       households: metrics.households,
@@ -2957,7 +3370,28 @@ export class CurrentSimulation {
   }
 
   private isAssignedToSanitation(person: Person): boolean {
-    return person.occupation === 'laborer' && person.currentTask === 'work' && person.decisionReason === SANITATION_TASK_REASON;
+    return person.currentTask === 'work' && person.decisionReason === SANITATION_TASK_REASON;
+  }
+
+  private shouldAssignToSanitation(person: Person): boolean {
+    if (!isAdult(person)) return false;
+    const population = Math.max(1, this.alivePeople().length);
+    const wastePerResident = this.stateValue.settlement.waste / population;
+    if (wastePerResident <= 0.35) return false;
+    const eligible = this.alivePeople()
+      .filter((candidate) => isAdult(candidate) && (
+        wastePerResident > 1.5 ||
+        candidate.occupation === 'laborer' ||
+        candidate.occupation === 'unemployed' ||
+        candidate.occupation === 'explorer' ||
+        (candidate.occupation === 'builder' && wastePerResident > 2)
+      ))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const requiredWorkers = Math.ceil(
+      Math.min(this.stateValue.settlement.waste, population * 3) /
+      Math.max(0.01, this.stateValue.config.environment.sanitationPerWorker),
+    );
+    return eligible.slice(0, requiredWorkers).some((candidate) => candidate.id === person.id);
   }
 
   private sanitationSiteFor(person: Person): Building | undefined {

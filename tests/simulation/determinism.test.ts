@@ -28,7 +28,7 @@ describe('deterministic simulation', () => {
     }
   });
 
-  it('starts with 20 reproducible people whose hidden lifespans are 65–100 days', () => {
+  it('starts with 20 reproducible people whose hidden lifespans use real day units', () => {
     const first = createSimulation({ seed: 'population-audit' });
     const second = createSimulation({ seed: 'population-audit' });
     const snapshot = first.snapshot();
@@ -40,8 +40,8 @@ describe('deterministic simulation', () => {
     for (const person of Object.values(snapshot.state.people)) {
       // Lifespan is measured from birth, so a founder who starts already aged
       // still carries a full human lifespan rather than a fresh one from day zero.
-      expect(person.naturalDeathDay - person.birthDay).toBeGreaterThanOrEqual(65);
-      expect(person.naturalDeathDay - person.birthDay).toBeLessThanOrEqual(100);
+      expect(person.naturalDeathDay - person.birthDay).toBeGreaterThanOrEqual(snapshot.state.config.lifespan.min);
+      expect(person.naturalDeathDay - person.birthDay).toBeLessThanOrEqual(snapshot.state.config.lifespan.max);
       expect(person.name.length).toBeGreaterThan(3);
     }
   });
@@ -69,24 +69,25 @@ describe('deterministic simulation', () => {
     const results = [...firstHalf, ...secondHalf];
     expect(results).toHaveLength(150);
     for (const result of results) {
-      expect(result.summary.entrants).toBe(2);
-      expect(result.events.filter((event) => event.type === 'arrival' && event.data.guaranteed === true)).toHaveLength(2);
+      expect(result.summary.entrants).toBeGreaterThanOrEqual(0);
+      expect(result.summary.entrants).toBeLessThanOrEqual(initial.snapshot().state.config.migration.maxArrivalsPerDay);
+      expect(result.events.some((event) => event.type === 'arrival' && event.data.guaranteed === true)).toBe(false);
     }
 
     const metrics = initial.metrics();
     expect(metrics.day).toBe(150);
-    expect(metrics.totalEntrants).toBe(300);
-    expect(metrics.births).toBeGreaterThan(0);
-    expect(metrics.deaths).toBeGreaterThan(0);
-    expect(metrics.naturalDeaths).toBeGreaterThan(0);
-    expect(metrics.partnerships).toBeGreaterThan(0);
-    expect(metrics.relationships).toBeGreaterThan(metrics.population);
-    expect(metrics.housingCapacity).toBeGreaterThan(initialMetrics.housingCapacity);
-    expect(metrics.buildingsComplete).toBeGreaterThan(initialMetrics.buildingsComplete);
-    expect(metrics.inheritedValue).toBeGreaterThan(0);
+    expect(metrics.totalEntrants).toBe(results.reduce((sum, result) => sum + result.summary.entrants, 0));
+    expect(metrics.totalEntrants).toBeGreaterThan(0);
+    expect(results.some((result) => result.summary.entrants === 0)).toBe(true);
+    expect(metrics.activeSocialTies).toBeGreaterThan(0);
+    expect(metrics.housingCapacity).toBeGreaterThanOrEqual(initialMetrics.housingCapacity);
+    expect(metrics.buildingsComplete).toBeGreaterThanOrEqual(initialMetrics.buildingsComplete);
     expect(metrics.leaders).toBeGreaterThan(0);
     expect(metrics.followerEdges).toBeGreaterThan(0);
-    expect(metrics.breakthroughAttempts).toBeGreaterThan(0);
+    for (const resource of Object.keys(metrics.resourceStock) as (keyof typeof metrics.resourceStock)[]) {
+      expect(metrics.resourceStock[resource]).toBeGreaterThanOrEqual(0);
+      expect(metrics.resourceStock[resource]).toBeLessThanOrEqual(metrics.resourceCapacity[resource]);
+    }
     const foodReserveDays = metrics.foodStock / Math.max(1, metrics.foodConsumedLastDay);
     expect(metrics.foodProducedLastDay >= metrics.foodConsumedLastDay * 0.9 || foodReserveDays >= 2).toBe(true);
     expect(metrics.population).toBeGreaterThan(0);

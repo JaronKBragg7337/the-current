@@ -60,6 +60,7 @@ vi.mock('./world/WorldCanvas', () => ({ WorldCanvas: () => null }));
 const PERSON: PersonProjection = {
   id: 'person-1',
   name: 'Ada Current',
+  previousPosition: { x: -1, y: 0, z: 0 },
   position: { x: 0, y: 0, z: 0 },
   destination: { x: 1, y: 0, z: 0 },
   yaw: 0,
@@ -79,13 +80,16 @@ const PERSON: PersonProjection = {
 
 function projection(day: number): WorldProjection {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     day,
     tick: day,
+    dayStartedAtUtc: null,
+    worldDayDurationMs: null,
     settlementId: 'settlement-1',
     settlementName: 'Confluence',
     population: 1,
     people: [PERSON],
+    artifacts: [],
     buildings: [],
     resources: { energy: 10, food: 10, medicine: 10, stone: 10, tools: 10, transport: 10, water: 10, wood: 10 },
     prices: { energy: 1, food: 1, medicine: 1, stone: 1, tools: 1, transport: 1, water: 1, wood: 1 },

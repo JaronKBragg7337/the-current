@@ -23,6 +23,15 @@ function formatTask(task: string): string {
   return task.replaceAll('-', ' ');
 }
 
+function formatAge(days: number): string {
+  const years = Math.floor(days / 365);
+  const remainder = Math.max(0, days - years * 365);
+  const months = Math.floor(remainder / 30.4375);
+  if (years > 0) return `${years} year${years === 1 ? '' : 's'}${months > 0 ? `, ${months} month${months === 1 ? '' : 's'}` : ''}`;
+  if (months > 0) return `${months} month${months === 1 ? '' : 's'}`;
+  return `${Math.max(0, Math.floor(days))} day${Math.floor(days) === 1 ? '' : 's'}`;
+}
+
 export function SelectionPanel({
   selection,
   person,
@@ -71,21 +80,21 @@ export function SelectionPanel({
               <>
                 <div>
                   <dt>Age</dt>
-                  <dd>{inspectedPerson.ageDays} days</dd>
+                  <dd>{formatAge(inspectedPerson.ageDays)}</dd>
                 </div>
                 <div>
                   <dt>Origin</dt>
                   <dd>
                     {inspectedPerson.origin === 'born'
-                      ? 'Born in this world'
+                      ? 'Born in this settlement'
                       : inspectedPerson.origin === 'founder'
-                        ? `Founding resident (arrived aged ${inspectedPerson.arrivalDay - inspectedPerson.birthDay})`
-                        : `Arrived from outside this world at age ${inspectedPerson.arrivalDay - inspectedPerson.birthDay}`}
+                        ? `Founding resident (arrived aged ${formatAge(inspectedPerson.arrivalDay - inspectedPerson.birthDay)})`
+                        : `Arrived from outside this settlement at age ${formatAge(inspectedPerson.arrivalDay - inspectedPerson.birthDay)}`}
                   </dd>
                 </div>
                 <div>
                   <dt>Time here</dt>
-                  <dd>{inspectedPerson.ageDays - (inspectedPerson.arrivalDay - inspectedPerson.birthDay)} world days</dd>
+                  <dd>{Math.max(0, inspectedPerson.ageDays - (inspectedPerson.arrivalDay - inspectedPerson.birthDay))} world days</dd>
                 </div>
                 <div><dt>Money</dt><dd>¤{inspectedPerson.wealth.toFixed(1)}</dd></div>
                 <div><dt>Children</dt><dd>{inspectedPerson.childrenIds.length}</dd></div>
