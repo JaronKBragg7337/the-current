@@ -2,6 +2,13 @@
 
 The observer has no avatar and cannot steer NPCs.
 
+## Time is not a control
+
+Every world advances one world day per real day, measured from its own genesis.
+There is no pause, no speed selector, and no manual day advance — in the shared
+world or in a private fork. The top bar reports the world day and its 24-hour
+time of day; it does not offer a way to change either.
+
 ## Desktop
 
 - Left drag: orbit around the current target.
@@ -12,8 +19,6 @@ The observer has no avatar and cannot steer NPCs.
 - `1`: orbital view.
 - `2`: third-person follow for the selected NPC.
 - `3`: first-person view through the selected NPC.
-- `Space`: pause or resume simulation time.
-- `[` / `]`: decrease or increase simulation speed.
 - `Escape`: dismiss the active details or information panel without cancelling an active follow or first-person view.
 - `H`: toggle the interface.
 
@@ -23,7 +28,7 @@ The observer has no avatar and cannot steer NPCs.
 - Two-finger drag: pan in orbital mode.
 - Pinch: zoom.
 - Tap: select.
-- Camera-mode buttons replace keyboard shortcuts.
+- Camera-mode buttons replace camera keyboard shortcuts.
 - History, Influence, Signals, and System remain available in the compact world toolbar.
 - Details in the camera dock reopens the selected entity card after it has been dismissed.
 

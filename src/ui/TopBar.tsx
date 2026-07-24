@@ -1,55 +1,73 @@
+import { useEffect, useState } from 'react';
+
 import type { CameraMode, EnvironmentOverlayMetric } from '../app/types';
+import { formatWorldTimeOfDay, worldNowMs } from '../app/worldClock';
+
+/** One world minute is one real minute, so a coarse tick is enough for HH:MM. */
+const CLOCK_TICK_MS = 10_000;
 
 interface TopBarProps {
   day: number;
+  /** When the current world day began; null until a world publishes it. */
+  dayStartedAtUtc: string | null;
+  worldDayDurationMs: number | null;
   population: number;
   settlementName: string;
   cameraMode: CameraMode;
-  paused: boolean;
-  speed: number;
   saveStatus: 'error' | 'idle' | 'saving' | 'saved';
   usingWorker: boolean;
   /**
    * True when this client is spectating the single shared authoritative
-   * world. Time controls, saving, and importing are hidden: one world
-   * exists, it advances at its own fixed pace, and every viewer sees the
-   * same thing regardless of who is watching.
+   * world. Saving and importing are hidden: one world exists, and every
+   * viewer sees the same thing regardless of who is watching. No world of
+   * either kind offers time controls — time is a property of the world.
    */
   liveWorld: boolean;
   environmentOverlay: EnvironmentOverlayMetric | null;
   panelsOpen: { history: boolean; interventions: boolean; metrics: boolean; signals: boolean };
-  onTogglePause: () => void;
-  onSpeedChange: (speed: number) => void;
-  onAdvanceDay: () => void;
   onSave: () => void;
   onExport: () => void;
   onImport: () => void;
   onEnvironmentOverlayChange: (metric: EnvironmentOverlayMetric | null) => void;
   onTogglePanel: (panel: keyof TopBarProps['panelsOpen']) => void;
 }
+
+function useWorldTimeOfDay(
+  dayStartedAtUtc: string | null,
+  worldDayDurationMs: number | null,
+): string | null {
+  const [nowMs, setNowMs] = useState(() => worldNowMs());
+  useEffect(() => {
+    if (dayStartedAtUtc === null || worldDayDurationMs === null) return undefined;
+    setNowMs(worldNowMs());
+    const timer = window.setInterval(() => setNowMs(worldNowMs()), CLOCK_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [dayStartedAtUtc, worldDayDurationMs]);
+  return formatWorldTimeOfDay(dayStartedAtUtc, worldDayDurationMs, nowMs);
+}
+
 export function TopBar({
   day,
+  dayStartedAtUtc,
+  worldDayDurationMs,
   population,
   settlementName,
   cameraMode,
-  paused,
-  speed,
   saveStatus,
   usingWorker,
   liveWorld,
   environmentOverlay,
   panelsOpen,
-  onTogglePause,
-  onSpeedChange,
-  onAdvanceDay,
   onSave,
   onExport,
   onImport,
   onEnvironmentOverlayChange,
   onTogglePanel,
 }: TopBarProps) {
+  const timeOfDay = useWorldTimeOfDay(dayStartedAtUtc, worldDayDurationMs);
+
   return (
-    <header className="top-bar" aria-label="World controls">
+    <header className="top-bar" aria-label="World status">
       <div className="identity-lockup">
         <span className="current-mark" aria-hidden="true"><i /><i /><i /></span>
         <div>
@@ -58,10 +76,17 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="world-pulse" aria-label={`World day ${day}, ${population} living people`}>
+      <div
+        className="world-pulse"
+        aria-label={`World day ${day}${timeOfDay === null ? '' : ` at ${timeOfDay}`}, ${population} living people`}
+      >
         <div>
           <span>World day</span>
           <strong>{day.toLocaleString()}</strong>
+        </div>
+        <div className="world-clock">
+          <span>Time</span>
+          <strong>{timeOfDay ?? '--:--'}</strong>
         </div>
         <div>
           <span>Living</span>
@@ -77,33 +102,27 @@ export function TopBar({
         </div>
       </div>
 
-      {liveWorld ? (
-        <nav className="time-controls" aria-label="Shared world status">
+      <nav className="world-identity" aria-label="World identity">
+        {liveWorld ? (
           <span
             className="worker-status isolated live-world-badge"
-            title="One shared world, advancing at a fixed pace for every viewer. Time cannot be controlled from here."
+            title="One shared world, advancing one world day per real day for every viewer. Time cannot be controlled from here."
           >
-            <i /> LIVE — one shared world
+            <i />
+            <span className="badge-long">LIVE — one shared world</span>
+            <span className="badge-short">LIVE</span>
           </span>
-        </nav>
-      ) : (
-        <nav className="time-controls" aria-label="Simulation time">
-          <button className="icon-button primary-control" type="button" onClick={onTogglePause} aria-label={paused ? 'Resume time' : 'Pause time'}>
-            <span aria-hidden="true">{paused ? '▶' : 'Ⅱ'}</span>
-          </button>
-          <label className="speed-control">
-            <span className="sr-only">World speed</span>
-            <select value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
-              <option value={0.25}>¼×</option>
-              <option value={1}>1×</option>
-              <option value={4}>4×</option>
-              <option value={16}>16×</option>
-              <option value={64}>64×</option>
-            </select>
-          </label>
-          <button className="icon-button" type="button" onClick={onAdvanceDay} aria-label="Advance one world day">+1d</button>
-        </nav>
-      )}
+        ) : (
+          <span
+            className="worker-status fallback local-world-badge"
+            title="A private world forked in this browser only. It also advances one world day per real day and is not the shared world."
+          >
+            <i />
+            <span className="badge-long">Private fork — not the shared world</span>
+            <span className="badge-short">Private fork</span>
+          </span>
+        )}
+      </nav>
 
       <nav className="panel-controls" aria-label="World panels">
         <button type="button" className={panelsOpen.history ? 'active' : ''} onClick={() => onTogglePanel('history')}>History</button>

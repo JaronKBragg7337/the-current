@@ -39,7 +39,7 @@ See [VERIFICATION.md](VERIFICATION.md) for the recorded commands, browser eviden
 | Reputation-based following | verified | Leadership survives the founding generation dying out (previously collapsed to zero around day 125); leaderless institutions lower their follower threshold per the specification's "lack of alternatives" |
 | Layered hidden entropy | verified | `DayInputs.entropy` feeds two hash chains (surface + deep); past replays exactly from recorded inputs, future uncomputable from the seed; 6 passing tests including Postgres-jsonb key-order round-trip |
 | One shared authoritative world | historical Era Zero evidence | Supabase-hosted Era Zero advanced one world day per real hour. That world is now frozen and archived; Era One changes the pace to one real day. |
-| Shared spectator clients | verified locally | Production clients default to polling the shared world; time controls, save, and import are replaced by a LIVE badge; `?world=local` opts into a private local world; dev/tests default to local |
+| Shared spectator clients | verified locally | Development and production both default to polling the shared world; a LIVE badge names it, save and import are hidden, and no mode has time controls; `?world=local` opts into a private local world that also runs on the real clock; the browser suite opts in explicitly |
 | Shared-world interventions | unimplemented | Spectator clients cannot yet submit interventions to the shared world; requires a server-side intervention queue with budgets (next action) |
 | Windows-local test execution | verified | The former `act is not a function` failures no longer reproduce; all 100 tests pass locally on Windows |
 

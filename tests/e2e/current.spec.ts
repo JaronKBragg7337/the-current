@@ -84,23 +84,56 @@ test('@smoke loads the configured base path in a worker-backed WebGL world and a
   expect(pageErrors).toEqual([]);
 });
 
-test('desktop keyboard controls change speed and pause without controlling an NPC', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'Desktop keyboard controls');
+test('@smoke no world offers a way to pause, accelerate, or hand-advance time', async ({ page }) => {
   await enterWorld(page);
 
-  const speed = page.getByLabel('World speed');
-  await expect(speed).toHaveValue('1');
+  await expect(page.getByRole('button', { name: 'Pause time' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Resume time' })).toHaveCount(0);
+  await expect(page.getByLabel('World speed')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Advance one world day' })).toHaveCount(0);
+  await expect(page.locator('.time-controls')).toHaveCount(0);
+
+  // Keys that used to control time must no longer move the world.
+  const before = await getDiagnostics(page);
+  await page.keyboard.press('Space');
   await page.keyboard.press(']');
-  await expect(speed).toHaveValue('4');
-  await expect(page.getByRole('button', { name: 'Pause time' })).toBeVisible();
-
-  await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Resume time' })).toBeVisible();
-  await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Pause time' })).toBeVisible();
-
   await page.keyboard.press('[');
-  await expect(speed).toHaveValue('1');
+  await expect.poll(async () => (await getDiagnostics(page)).day).toBe(before.day);
+});
+
+test('@smoke a private fork is labelled as one and shows a world time of day', async ({ page }) => {
+  await enterWorld(page);
+
+  // An explicit ?world=local fork must never be mistaken for the shared world.
+  await expect(page.locator('.local-world-badge')).toBeVisible();
+  await expect(page.locator('.live-world-badge')).toHaveCount(0);
+  await expect(page.locator('.world-clock strong')).toHaveText(/^([01]\d|2[0-3]):[0-5]\d$/);
+});
+
+test('desktop top bar sections never overlap across common widths', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'Desktop layout coverage');
+
+  for (const width of [1280, 1440, 1680, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await enterWorld(page);
+    const sections = await page.locator('.top-bar > *').evaluateAll((elements) =>
+      elements
+        .filter((element) => getComputedStyle(element).display !== 'none')
+        .map((element) => {
+          const box = element.getBoundingClientRect();
+          return { name: element.getAttribute('class') ?? element.tagName, left: box.left, right: box.right };
+        }),
+    );
+    for (let i = 0; i < sections.length; i += 1) {
+      for (let j = i + 1; j < sections.length; j += 1) {
+        const a = sections[i];
+        const b = sections[j];
+        if (a === undefined || b === undefined) continue;
+        const overlaps = a.left < b.right && b.left < a.right;
+        expect(overlaps, `${a.name} overlaps ${b.name} at ${width}px`).toBe(false);
+      }
+    }
+  }
 });
 
 test('desktop panels open, expose diagnostics, and close accessibly', async ({ page }, testInfo) => {
@@ -285,4 +318,28 @@ test('mobile Chromium keeps the world and spectator controls inside the viewport
     await expectLocatorInsideViewport(page, panelButton);
   }
   await expect(page.getByRole('button', { name: 'Follow' })).toBeDisabled();
+
+  // The world identity badge has to survive the mobile layout: a phone viewer
+  // must still be able to tell which world they are looking at.
+  await expect(page.locator('.world-identity .worker-status')).toBeVisible();
+});
+
+test('mobile phone widths stack the world pulse above the resource strip', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chromium', 'Mobile responsive coverage');
+
+  // The pulse card used to overlap the resource strip on common phone widths.
+  for (const width of [390, 412]) {
+    await page.setViewportSize({ width, height: 844 });
+    await enterWorld(page);
+    await expectNoHorizontalOverflow(page);
+    const pulse = await page.locator('.world-pulse').boundingBox();
+    const strip = await page.locator('.resource-strip').boundingBox();
+    expect(pulse, `world pulse at ${width}px`).not.toBeNull();
+    expect(strip, `resource strip at ${width}px`).not.toBeNull();
+    if (pulse === null || strip === null) continue;
+    expect(
+      pulse.y + pulse.height,
+      `world pulse must end above the resource strip at ${width}px`,
+    ).toBeLessThanOrEqual(strip.y);
+  }
 });

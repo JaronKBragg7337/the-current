@@ -92,7 +92,10 @@
     right: 14px;
     min-height: 70px;
     display: grid;
-    grid-template-columns: minmax(220px, 0.8fr) minmax(390px, 1.25fr) auto minmax(410px, 1fr);
+    /* The identity, world-identity badge, and panel controls are sized by
+       their content; the world pulse absorbs whatever is left and shrinks
+       first. No track can be pushed under another, at any width. */
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 18px;
     padding: 10px 12px 10px 16px;
@@ -150,15 +153,19 @@
   .current-mark i:nth-child(2), .loading-mark i:nth-child(2) { top: 18px; transform: rotate(-10deg); }
   .current-mark i:nth-child(3), .loading-mark i:nth-child(3) { top: 24px; transform: rotate(8deg); }
 
-  .world-pulse { display: grid; grid-template-columns: repeat(4, minmax(70px, 1fr)); align-items: center; gap: 0; }
+  .identity-lockup, .world-pulse, .world-identity, .panel-controls { min-width: 0; }
+  .world-pulse { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: center; gap: 0; }
   .world-pulse > div { min-width: 0; padding: 2px 15px; border-left: 1px solid var(--line); }
+  .world-pulse > div:first-child { border-left: 0; }
   .world-pulse span { display: block; color: var(--quiet); font-size: 0.64rem; letter-spacing: 0.09em; text-transform: uppercase; }
   .world-pulse strong { display: block; margin-top: 4px; overflow: hidden; font-size: 0.88rem; font-weight: 620; line-height: 1.1; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
-  .time-controls, .panel-controls, .save-menu { display: flex; align-items: center; gap: 5px; }
-  .time-controls button, .time-controls select, .panel-controls button { min-height: 34px; padding: 0 10px; font-size: 0.72rem; font-weight: 620; }
-  .time-controls .primary-control { width: 36px; padding: 0; color: #102124; background: var(--gold); border-color: var(--gold); }
-  .speed-control select { width: 58px; color: var(--ink); background-color: rgba(225,235,226,.08); }
-  .panel-controls { justify-self: end; }
+  /* The world clock is a fixed-width reading, so it must not be ellipsised. */
+  .world-clock strong { font-variant-numeric: tabular-nums; text-transform: none; }
+  .world-identity, .panel-controls, .save-menu { display: flex; align-items: center; gap: 5px; }
+  .panel-controls button { min-height: 34px; padding: 0 10px; font-size: 0.72rem; font-weight: 620; }
+  .panel-controls { justify-self: end; flex-wrap: nowrap; }
+  .world-identity .worker-status { margin-left: 0; white-space: nowrap; }
+  .world-identity .badge-short { display: none; }
   .environment-layer-control { display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 7px; color: var(--quiet); border: 1px solid var(--line); border-radius: 6px; font-size: .58rem; letter-spacing: .06em; text-transform: uppercase; }
   .environment-layer-control select { max-width: 124px; color: var(--ink); background: rgba(225,235,226,.08); border: 0; font-size: .68rem; }
   .panel-controls button.active, .camera-tabs button.active, .camera-dock button.active { color: var(--gold); border-color: rgba(228, 201, 122, 0.44); background: rgba(228, 201, 122, 0.1); }
@@ -292,18 +299,19 @@
 
 @layer responsive {
   @media (max-width: 1280px) {
-    .top-bar { grid-template-columns: minmax(200px, .8fr) minmax(270px, 1fr) auto auto; gap: 8px; }
+    .top-bar { gap: 8px; }
     .world-pulse > div { padding-inline: 10px; }
     .panel-controls > button { padding-inline: 7px; }
-    .worker-status { display: none; }
+    /* The worker/fallback diagnostic is noise on narrow screens, but the badge
+       naming which world this is must survive every layout. */
+    .panel-controls .worker-status { display: none; }
   }
 
   @media (max-width: 980px) {
-    .top-bar { grid-template-columns: minmax(180px, 1fr) auto auto; grid-template-areas: "identity pulse time" "panels panels panels"; }
+    .top-bar { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "identity pulse identity-badge" "panels panels panels"; }
     .identity-lockup { grid-area: identity; }
-    .world-pulse { grid-template-columns: repeat(2, minmax(62px, 1fr)); }
     .world-pulse { grid-area: pulse; }
-    .time-controls { grid-area: time; }
+    .world-identity { grid-area: identity-badge; }
     .panel-controls { grid-column: 1 / -1; justify-self: stretch; }
     .panel-controls { grid-area: panels; }
     .panel-controls > button { flex: 1; }
@@ -313,23 +321,53 @@
   }
 
   @media (max-width: 720px) {
+    /* The pulse card and the resource strip are positioned independently, so
+       their stacking is derived from shared measurements rather than from two
+       hand-matched offsets that drift apart and collide. */
+    :root {
+      --mobile-bar-top: max(7px, env(safe-area-inset-top));
+      --mobile-bar-height: 102px;
+      --mobile-pulse-height: 52px;
+      --mobile-stack-gap: 6px;
+    }
     .desktop-only { display: none !important; }
-    .top-bar { top: max(7px, env(safe-area-inset-top)); left: 7px; right: 7px; min-height: 102px; grid-template-columns: 1fr auto; grid-template-rows: 42px 38px; grid-template-areas: "identity time" "panels panels"; gap: 4px 8px; padding: 8px 9px; border-radius: 9px; }
+    .top-bar { top: var(--mobile-bar-top); left: 7px; right: 7px; min-height: var(--mobile-bar-height); grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 42px 38px; grid-template-areas: "identity identity-badge" "panels panels"; gap: 4px 8px; padding: 8px 9px; border-radius: 9px; }
     .identity-lockup .eyebrow { display: none; }
     .identity-lockup h1 { font-size: 1.2rem; }
     .current-mark { width: 31px; height: 31px; }
     .current-mark i:nth-child(1) { top: 9px; }
     .current-mark i:nth-child(2) { top: 15px; }
     .current-mark i:nth-child(3) { top: 21px; }
-    .world-pulse { position: absolute; top: 106px; left: 0; width: 164px; padding: 6px 4px; background: rgba(6,20,22,.8); border: 1px solid var(--line); border-radius: 8px; }
+    .world-pulse {
+      position: absolute;
+      top: calc(var(--mobile-bar-height) + var(--mobile-stack-gap));
+      left: 0;
+      width: max-content;
+      max-width: 100%;
+      min-height: var(--mobile-pulse-height);
+      padding: 5px 4px;
+      background: rgba(6,20,22,.8);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
     .world-pulse > div { padding: 2px 8px; }
-    .world-pulse > div:first-child { border-left: 0; }
+    .world-pulse span { font-size: 0.58rem; }
+    .world-pulse strong { margin-top: 3px; font-size: 0.82rem; }
     .panel-controls { display: flex; width: 100%; gap: 4px; overflow-x: auto; }
     .panel-controls > button { min-width: 64px; min-height: 34px; padding-inline: 6px; }
     .environment-layer-control { flex: 0 0 auto; }
     .panel-controls .save-menu { flex: 0 0 auto; }
-    .time-controls button, .time-controls select { min-height: 32px; }
-    .resource-strip { top: max(168px, calc(env(safe-area-inset-top) + 166px)); left: 7px; right: 7px; padding: 3px; }
+    .world-identity .badge-long { display: none; }
+    .world-identity .badge-short { display: inline; }
+    .resource-strip {
+      top: calc(
+        var(--mobile-bar-top) + var(--mobile-bar-height) + var(--mobile-stack-gap)
+        + var(--mobile-pulse-height) + var(--mobile-stack-gap)
+      );
+      left: 7px;
+      right: 7px;
+      padding: 3px;
+    }
     .resource { min-width: 68px; padding: 4px 7px; }
     .housing-resource { display: none; }
     .selection-panel, .history-panel, .system-panel {
