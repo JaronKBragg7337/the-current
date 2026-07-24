@@ -39,29 +39,64 @@ interface SharedWorldSnapshotRow {
   world_day_ms: number;
 }
 
+export type WorldMode = 'local' | 'shared';
+
+export type WorldResolution =
+  | { mode: 'local' }
+  | { mode: 'shared'; config: SharedWorldConfig }
+  | { mode: 'unavailable'; reason: string };
+
+export const SHARED_WORLD_UNAVAILABLE_MESSAGE =
+  'The live shared world could not be reached, so this client is not showing it. '
+  + 'Fix public/shared-world.json or the network, then reload. '
+  + 'Add ?world=local only if you intend to fork a private world of your own.';
+
+/**
+ * Which world this client watches.
+ *
+ * Development and production both default to the single shared authoritative
+ * world — the owner's live world, and the only world a collaborator should
+ * ever observe. `?world=local` (alias `?world=new`) is an explicit opt-in for
+ * an outsider who wants to fork a private world of their own. There is no
+ * condition under which a fresh local world becomes the default.
+ */
+export function resolveWorldMode(search: string): WorldMode {
+  const mode = new URLSearchParams(search).get('world');
+  return mode === 'local' || mode === 'new' ? 'local' : 'shared';
+}
+
 export async function loadSharedWorldConfig(): Promise<SharedWorldConfig | null> {
-  const params = new URLSearchParams(window.location.search);
-  const mode = params.get('world');
-  // ?world=local always opts out; development builds default to local
-  // worlds (tests, offline work) unless ?world=shared explicitly opts in.
-  if (mode === 'local') return null;
-  if (import.meta.env.DEV && mode !== 'shared') return null;
-  try {
-    const response = await fetch(`${import.meta.env.BASE_URL}shared-world.json`, { cache: 'no-store' });
-    if (!response.ok) return null;
-    const config: unknown = await response.json();
-    if (typeof config !== 'object' || config === null) return null;
-    const candidate = config as { enabled?: unknown; url?: unknown; anonKey?: unknown; pollSeconds?: unknown };
-    if (candidate.enabled !== true || typeof candidate.url !== 'string' || typeof candidate.anonKey !== 'string') {
-      return null;
-    }
-    return {
-      url: candidate.url.replace(/\/$/, ''),
-      anonKey: candidate.anonKey,
-      pollSeconds: typeof candidate.pollSeconds === 'number' && candidate.pollSeconds >= 5 ? candidate.pollSeconds : 20,
-    };
-  } catch {
+  const response = await fetch(`${import.meta.env.BASE_URL}shared-world.json`, { cache: 'no-store' });
+  if (!response.ok) return null;
+  const config: unknown = await response.json();
+  if (typeof config !== 'object' || config === null) return null;
+  const candidate = config as { enabled?: unknown; url?: unknown; anonKey?: unknown; pollSeconds?: unknown };
+  if (candidate.enabled !== true || typeof candidate.url !== 'string' || typeof candidate.anonKey !== 'string') {
     return null;
+  }
+  return {
+    url: candidate.url.replace(/\/$/, ''),
+    anonKey: candidate.anonKey,
+    pollSeconds: typeof candidate.pollSeconds === 'number' && candidate.pollSeconds >= 5 ? candidate.pollSeconds : 20,
+  };
+}
+
+/**
+ * Resolve the world without ever silently substituting one for another. A
+ * client that asked for the shared world and cannot reach it reports that
+ * failure; it does not quietly create a brand-new private world and present it
+ * as the real one.
+ */
+export async function resolveWorld(search: string): Promise<WorldResolution> {
+  if (resolveWorldMode(search) === 'local') return { mode: 'local' };
+  try {
+    const config = await loadSharedWorldConfig();
+    return config === null
+      ? { mode: 'unavailable', reason: SHARED_WORLD_UNAVAILABLE_MESSAGE }
+      : { mode: 'shared', config };
+  } catch (caught) {
+    const detail = caught instanceof Error ? caught.message : String(caught);
+    return { mode: 'unavailable', reason: `${SHARED_WORLD_UNAVAILABLE_MESSAGE} (${detail})` };
   }
 }
 
@@ -167,7 +202,8 @@ export function useSharedWorldRuntime(config: SharedWorldConfig | null): Simulat
   }, []);
 
   const noop = useCallback((): void => {
-    // Spectators cannot alter the shared world's time.
+    // The shared world's day comes from the server's real clock. Nothing a
+    // client does — including the browser test shim — can move it.
   }, []);
 
   return {
@@ -176,15 +212,10 @@ export function useSharedWorldRuntime(config: SharedWorldConfig | null): Simulat
     inspectedPersonId,
     hostMetrics: null,
     ready,
-    // The shared world is always running at its own fixed pace.
-    paused: false,
-    speed: 1,
     saveStatus: 'idle',
     error,
     usingWorker: false,
-    setSpeed: noop,
-    togglePause: noop,
-    advanceDays: noop,
+    skipAheadOneDayForTests: noop,
     inspectPerson,
     submitIntervention: rejectMutation as (intervention: ObserverIntervention) => Promise<void>,
     submitSignal: rejectMutation as (signal: NormalizedSignal) => Promise<void>,
@@ -199,28 +230,30 @@ export interface WorldRuntime extends SimulationRuntimeView {
 }
 
 /**
- * Resolve which world this client watches: the single shared authoritative
- * world (default in production when configured) or a private local world
- * (development, tests, or ?world=local). Exactly one runtime is active.
+ * Resolve which world this client watches. The shared authoritative world is
+ * the default in development and production alike; a private local world is
+ * only ever the result of an explicit `?world=local` opt-in. Exactly one
+ * runtime is active, and a failure to reach the shared world surfaces as an
+ * error rather than as a different world.
  */
 export function useWorldRuntime(): WorldRuntime | null {
-  const [config, setConfig] = useState<SharedWorldConfig | null | undefined>(undefined);
+  const [resolution, setResolution] = useState<WorldResolution | null>(null);
 
   useEffect(() => {
     let active = true;
-    void loadSharedWorldConfig().then((resolved) => {
-      if (active) setConfig(resolved);
+    void resolveWorld(window.location.search).then((resolved) => {
+      if (active) setResolution(resolved);
     });
     return () => {
       active = false;
     };
   }, []);
 
-  const local = useSimulationRuntime(config === null);
-  const shared = useSharedWorldRuntime(config ?? null);
+  const local = useSimulationRuntime(resolution?.mode === 'local');
+  const shared = useSharedWorldRuntime(resolution?.mode === 'shared' ? resolution.config : null);
 
-  if (config === undefined) return null;
-  return config === null
-    ? { ...local, liveWorld: false }
-    : { ...shared, liveWorld: true };
+  if (resolution === null) return null;
+  if (resolution.mode === 'local') return { ...local, liveWorld: false };
+  if (resolution.mode === 'shared') return { ...shared, liveWorld: true };
+  return { ...shared, liveWorld: true, error: resolution.reason };
 }

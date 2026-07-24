@@ -19,7 +19,6 @@ import type { CameraDiagnostics } from './world/SpectatorCamera';
 import { deriveVehicles } from './world/vehicles';
 import { WorldCanvas } from './world/WorldCanvas';
 
-const SPEEDS = [0.25, 1, 4, 16, 64] as const;
 const EMPTY_RENDER_DIAGNOSTICS: RenderDiagnostics = {
   calls: 0,
   triangles: 0,
@@ -67,10 +66,8 @@ export function App() {
 
 function AppView({ runtime }: { runtime: WorldRuntime }) {
   const inspectPerson = runtime.inspectPerson;
-  const setSimulationSpeed = runtime.setSpeed;
-  const toggleSimulationPause = runtime.togglePause;
   const importWorld = runtime.importWorld;
-  const advanceSimulationDays = runtime.advanceDays;
+  const skipAheadOneDayForTests = runtime.skipAheadOneDayForTests;
   const [selection, setSelection] = useState<Selection>(null);
   const [selectionPanelOpen, setSelectionPanelOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbital');
@@ -136,13 +133,6 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     setSelectionPanelOpen(nextSelection !== null);
   }, [cameraMode]);
 
-  const changeSpeedStep = useCallback((direction: -1 | 1): void => {
-    const currentIndex = SPEEDS.findIndex((value) => value === runtime.speed);
-    const start = currentIndex === -1 ? 1 : currentIndex;
-    const next = Math.max(0, Math.min(SPEEDS.length - 1, start + direction));
-    setSimulationSpeed(SPEEDS[next] ?? 1);
-  }, [runtime.speed, setSimulationSpeed]);
-
   useEffect(() => {
     const handleKeyboard = (event: KeyboardEvent): void => {
       const target = event.target;
@@ -156,16 +146,6 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
           break;
         case '3':
           if (selection?.kind === 'person') setCameraMode('first-person');
-          break;
-        case ' ':
-          event.preventDefault();
-          toggleSimulationPause();
-          break;
-        case '[':
-          changeSpeedStep(-1);
-          break;
-        case ']':
-          changeSpeedStep(1);
           break;
         case 'h':
           setInterfaceHidden((hidden) => !hidden);
@@ -183,7 +163,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     };
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, [cameraMode, changeSpeedStep, selection, selectionPanelOpen, toggleSimulationPause]);
+  }, [cameraMode, selection, selectionPanelOpen]);
 
   useEffect(() => {
     if (projection === null) return;
@@ -208,7 +188,9 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
   useEffect(() => {
     if (projection === null) return;
     window.__CURRENT_TEST_API__ = {
-      advanceDay: () => advanceSimulationDays(1),
+      // Moves the clock a local world reads, not the world itself. The shared
+      // world ignores it: its day comes from the server's real clock.
+      advanceDay: () => skipAheadOneDayForTests(),
       selectEvidencePerson: () => {
         const person = projection.people.reduce<(typeof projection.people)[number] | null>((best, candidate) => {
           const clearance = (x: number, z: number) => projection.buildings.reduce((nearest, building) => {
@@ -239,7 +221,7 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
     return () => {
       delete window.__CURRENT_TEST_API__;
     };
-  }, [advanceSimulationDays, handleCameraMode, projection]);
+  }, [handleCameraMode, projection, skipAheadOneDayForTests]);
 
   const handleDiagnostics = useCallback((diagnostics: RenderDiagnostics): void => {
     setRenderDiagnostics(diagnostics);
@@ -307,19 +289,16 @@ function AppView({ runtime }: { runtime: WorldRuntime }) {
         <>
           <TopBar
             day={projection.day}
+            dayStartedAtUtc={projection.dayStartedAtUtc}
+            worldDayDurationMs={projection.worldDayDurationMs}
             population={projection.population}
             settlementName={projection.settlementName}
             cameraMode={cameraMode}
-            paused={runtime.paused}
-            speed={runtime.speed}
             saveStatus={runtime.saveStatus}
             usingWorker={runtime.usingWorker}
             liveWorld={runtime.liveWorld}
             environmentOverlay={environmentOverlay}
             panelsOpen={panels}
-            onTogglePause={runtime.togglePause}
-            onSpeedChange={runtime.setSpeed}
-            onAdvanceDay={() => runtime.advanceDays(1)}
             onSave={runtime.saveNow}
             onExport={runtime.exportWorld}
             onImport={() => importInputRef.current?.click()}

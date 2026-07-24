@@ -29,14 +29,31 @@ import {
   queuedWorldDay,
   type TimedDeferred,
 } from './runtimePersistence';
+import {
+  WORLD_DAY_DURATION_MS,
+  shiftWorldClock,
+  worldDayAt,
+  worldDayStartedAtUtc,
+  worldNowMs,
+} from './worldClock';
 
 const DEFAULT_WORLD_ID = 'the-current-public-current-001';
 const DEFAULT_SEED = 'current-public-001';
 const AUTOSAVE_INTERVAL_DAYS = 1;
-
-function projectionIntervalForSpeed(daysPerSecond: number): number {
-  return Math.max(1, Math.ceil(daysPerSecond / 16));
-}
+/**
+ * How often a local world checks the real clock. The worker's own free-running
+ * pulse stays disabled: the wall clock is the only authority over how far a
+ * world has advanced, so a reload, a backgrounded tab, or a closed laptop all
+ * resume at the day real time actually reached.
+ */
+const CLOCK_SYNC_INTERVAL_MS = 1_000;
+/** A world that cannot be accelerated has no reason to batch days quickly. */
+const REAL_CLOCK_SPEED = {
+  daysPerSecond: 0,
+  maxDaysPerSlice: 4,
+  projectionEveryDays: 1,
+  metricsEveryDays: 5,
+} as const;
 
 export interface SimulationRuntimeView {
   projection: WorldProjection | null;
@@ -44,14 +61,15 @@ export interface SimulationRuntimeView {
   inspectedPersonId: string | null;
   hostMetrics: HostPerformanceMetrics | null;
   ready: boolean;
-  paused: boolean;
-  speed: number;
   saveStatus: 'error' | 'idle' | 'saving' | 'saved';
   error: string | null;
   usingWorker: boolean;
-  setSpeed: (daysPerSecond: number) => void;
-  togglePause: () => void;
-  advanceDays: (days: number) => void;
+  /**
+   * Browser-test only, and never rendered as a control. Worlds advance because
+   * real time passes, so the smoke test moves the clock a local world reads
+   * rather than moving the world itself.
+   */
+  skipAheadOneDayForTests: () => void;
   inspectPerson: (personId: string) => void;
   submitIntervention: (intervention: ObserverIntervention) => Promise<void>;
   submitSignal: (signal: NormalizedSignal) => Promise<void>;
@@ -96,15 +114,16 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
   const autosaveSchedulerRef = useRef<AutosaveScheduler | null>(null);
   const hostTransitionRef = useRef(false);
   const fatalHostErrorRef = useRef<Error | null>(null);
-  const speedRef = useRef(1);
-  const pausedRef = useRef(true);
+  // A local world's genesis. Its day is always derived from how much real time
+  // has passed since this instant, never from anything an observer does.
+  const genesisMsRef = useRef<number | null>(null);
+  const requestedDayRef = useRef(0);
+  const syncToRealClockRef = useRef<() => void>(() => undefined);
   const [projection, setProjection] = useState<WorldProjection | null>(null);
   const [inspectedPerson, setInspectedPerson] = useState<Person | null>(null);
   const [inspectedPersonId, setInspectedPersonId] = useState<string | null>(null);
   const [hostMetrics, setHostMetrics] = useState<HostPerformanceMetrics | null>(null);
   const [ready, setReady] = useState(false);
-  const [paused, setPaused] = useState(true);
-  const [speed, setSpeedState] = useState(1);
   const [saveStatus, setSaveStatus] = useState<'error' | 'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [usingWorker, setUsingWorker] = useState(true);
@@ -157,6 +176,25 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
     });
     autosaveSchedulerRef.current = autosaveScheduler;
 
+    /**
+     * Advance the world to the day real time has reached. This is the only
+     * thing that ever advances a local world, and it is driven by the clock
+     * rather than by any observer, so it can request days but never skip,
+     * repeat, or reverse them.
+     */
+    const syncToRealClock = (): void => {
+      const genesisMs = genesisMsRef.current;
+      if (!active || genesisMs === null || hostTransitionRef.current) return;
+      if (fatalHostErrorRef.current !== null) return;
+      const targetDay = worldDayAt(genesisMs);
+      if (targetDay <= requestedDayRef.current) return;
+      const days = targetDay - requestedDayRef.current;
+      requestedDayRef.current = targetDay;
+      created.host.post(createWorkerCommand({ type: 'ADVANCE', days, projectionEveryDays: 1 }));
+    };
+    syncToRealClockRef.current = syncToRealClock;
+    const clockTimer = window.setInterval(syncToRealClock, CLOCK_SYNC_INTERVAL_MS);
+
     const handleResponse = (response: SimulationWorkerResponse): void => {
       if (!active) return;
       if (response.type === 'READY' && response.inReplyTo !== null) {
@@ -165,18 +203,21 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
       switch (response.type) {
         case 'READY':
           setReady(true);
-          pausedRef.current = response.state !== 'running';
-          speedRef.current = response.speed.daysPerSecond;
-          setPaused(pausedRef.current);
-          setSpeedState(speedRef.current);
           if (needsInitialSnapshot) {
             needsInitialSnapshot = false;
             initialSnapshotRequestId = postSnapshotRequest(response.day);
           }
           return;
-        case 'PROJECTION':
+        case 'PROJECTION': {
           currentDayRef.current = response.projection.day;
-          setProjection(response.projection);
+          const genesisMs = genesisMsRef.current;
+          setProjection({
+            ...response.projection,
+            dayStartedAtUtc: genesisMs === null
+              ? null
+              : worldDayStartedAtUtc(genesisMs, response.projection.day),
+            worldDayDurationMs: genesisMs === null ? null : WORLD_DAY_DURATION_MS,
+          });
           if (
             response.projection.day > 0 &&
             response.projection.day % AUTOSAVE_INTERVAL_DAYS === 0 &&
@@ -186,6 +227,7 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
             autosaveScheduler.queue(response.projection.day);
           }
           return;
+        }
         case 'EVENT_BATCH':
           if (response.events.length > 0) {
             const eventWorldId = worldIdRef.current;
@@ -292,10 +334,14 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
           initialPersistence = createTimedDeferred<void>('Initial world persistence');
           persistenceReadyRef.current = initialPersistence.promise;
           needsInitialSnapshot = true;
+          // A new private fork is born now and is live from this instant: its
+          // day zero is today, and it reaches day one when tomorrow does.
+          genesisMsRef.current = worldNowMs();
+          requestedDayRef.current = 0;
           created.host.post(createWorkerCommand({
             type: 'INIT',
             options: { seed: DEFAULT_SEED },
-            speed: { daysPerSecond: 1, maxDaysPerSlice: 4, projectionEveryDays: 1, metricsEveryDays: 5 },
+            speed: { ...REAL_CLOCK_SPEED },
             startPaused: true,
           }));
         } else {
@@ -309,10 +355,16 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
           lastSaveRequestedDayRef.current = loaded.snapshot.day;
           lastPersistedDayRef.current = loaded.snapshot.day;
           currentDayRef.current = loaded.snapshot.day;
+          // This fork's genesis is when it was first created, so time kept
+          // passing while the tab was closed. Days are never given back: a
+          // world restored from a later snapshot stays where it already was.
+          const createdAtMs = new Date(loaded.world.createdAt).getTime();
+          genesisMsRef.current = Number.isFinite(createdAtMs) ? createdAtMs : worldNowMs();
+          requestedDayRef.current = loaded.snapshot.day;
           created.host.post(createWorkerCommand({
             type: 'LOAD',
             snapshot: loaded.snapshot,
-            speed: { daysPerSecond: 1, maxDaysPerSlice: 4, projectionEveryDays: 1, metricsEveryDays: 5 },
+            speed: { ...REAL_CLOCK_SPEED },
             startPaused: true,
           }));
           const recoveryDay = calculateRecoveryDay(
@@ -343,7 +395,9 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
             created.host.post(createWorkerCommand({ type: 'ADVANCE', days: 1, projectionEveryDays: 1 }));
             postInputsForDay(day);
           }
+          requestedDayRef.current = Math.max(requestedDayRef.current, recoveryDay);
         }
+        syncToRealClock();
       })
       .catch((caught: unknown) => {
         if (!active) return;
@@ -352,9 +406,12 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
         initialPersistence = createTimedDeferred<void>('Fallback world persistence');
         persistenceReadyRef.current = initialPersistence.promise;
         needsInitialSnapshot = true;
+        genesisMsRef.current = worldNowMs();
+        requestedDayRef.current = 0;
         created.host.post(createWorkerCommand({
           type: 'INIT',
           options: { seed: DEFAULT_SEED },
+          speed: { ...REAL_CLOCK_SPEED },
           startPaused: true,
         }));
       });
@@ -376,6 +433,9 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
 
     return () => {
       active = false;
+      window.clearInterval(clockTimer);
+      syncToRealClockRef.current = () => undefined;
+      genesisMsRef.current = null;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       const closed = new Error('Simulation host closed before persistence completed');
       pendingSnapshotWaiters.rejectAll(closed);
@@ -453,43 +513,9 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
     }
   }, []);
 
-  const setSpeed = useCallback((daysPerSecond: number): void => {
-    if (hostTransitionRef.current) return;
-    const host = hostRef.current;
-    if (host === null) return;
-    speedRef.current = daysPerSecond;
-    pausedRef.current = daysPerSecond === 0;
-    setSpeedState(daysPerSecond);
-    setPaused(pausedRef.current);
-    host.post(createWorkerCommand({
-      type: 'SET_SPEED',
-      speed: {
-        daysPerSecond,
-        maxDaysPerSlice: daysPerSecond >= 32 ? 16 : 4,
-        projectionEveryDays: projectionIntervalForSpeed(daysPerSecond),
-        metricsEveryDays: Math.max(5, projectionIntervalForSpeed(daysPerSecond)),
-      },
-    }));
-  }, []);
-
-  const togglePause = useCallback((): void => {
-    if (hostTransitionRef.current) return;
-    const host = hostRef.current;
-    if (host === null) return;
-    if (pausedRef.current) {
-      const resumedSpeed = speedRef.current > 0 ? speedRef.current : 1;
-      setSpeed(resumedSpeed);
-    } else {
-      pausedRef.current = true;
-      setPaused(true);
-      host.post(createWorkerCommand({ type: 'PAUSE' }));
-      void persistHostState().catch(() => undefined);
-    }
-  }, [persistHostState, setSpeed]);
-
-  const advanceDays = useCallback((days: number): void => {
-    if (hostTransitionRef.current) return;
-    hostRef.current?.post(createWorkerCommand({ type: 'ADVANCE', days, projectionEveryDays: 1 }));
+  const skipAheadOneDayForTests = useCallback((): void => {
+    shiftWorldClock(WORLD_DAY_DURATION_MS);
+    syncToRealClockRef.current();
   }, []);
 
   const inspectPerson = useCallback((personId: string): void => {
@@ -581,6 +607,11 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
       lastSaveRequestedDayRef.current = loaded.snapshot.day;
       lastPersistedDayRef.current = loaded.snapshot.day;
       currentDayRef.current = loaded.snapshot.day;
+      // An imported world keeps running on the real clock from its own
+      // genesis, so importing a history cannot be used to reposition time.
+      const importedCreatedAtMs = new Date(loaded.world.createdAt).getTime();
+      genesisMsRef.current = Number.isFinite(importedCreatedAtMs) ? importedCreatedAtMs : worldNowMs();
+      requestedDayRef.current = loaded.snapshot.day;
       setReady(false);
       setProjection(null);
       setInspectedPerson(null);
@@ -591,7 +622,7 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
           createWorkerCommand({
             type: 'LOAD',
             snapshot: loaded.snapshot,
-            speed: { daysPerSecond: speedRef.current || 1 },
+            speed: { ...REAL_CLOCK_SPEED },
             startPaused: true,
           }),
           'Load imported world',
@@ -614,6 +645,7 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
     } finally {
       hostTransitionRef.current = false;
     }
+    syncToRealClockRef.current();
   }, [postAndWaitForReady]);
 
   return {
@@ -622,14 +654,10 @@ export function useSimulationRuntime(enabled = true): SimulationRuntimeView {
     inspectedPersonId,
     hostMetrics,
     ready,
-    paused,
-    speed,
     saveStatus,
     error,
     usingWorker,
-    setSpeed,
-    togglePause,
-    advanceDays,
+    skipAheadOneDayForTests,
     inspectPerson,
     submitIntervention,
     submitSignal,

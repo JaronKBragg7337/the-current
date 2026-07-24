@@ -75,31 +75,29 @@ export async function waitForRenderedWorld(page: Page): Promise<CurrentDiagnosti
   return getDiagnostics(page);
 }
 
-export async function enterWorld(page: Page, pause = true): Promise<CurrentDiagnostics> {
+/**
+ * Open a private local world.
+ *
+ * `?world=local` is required: both dev and production default to the single
+ * shared authoritative world, and the browser suite must never assert against
+ * the owner's live world or the state it publishes.
+ */
+export async function enterWorld(page: Page): Promise<CurrentDiagnostics> {
   // Relative navigation preserves a configured deployment subpath. An
   // absolute slash would silently test the origin root instead.
-  await page.goto('./');
+  await page.goto('./?world=local');
   await expect(page.getByRole('heading', { name: 'Witness the current.' })).toBeVisible();
   await expect(page.locator('.world-canvas canvas')).toBeVisible();
-  // Let the initial, paused worker finish before the welcome action starts time.
-  // Otherwise a software-rendered browser can advance many days before the
-  // harness gets enough main-thread time to click Pause.
   await waitForReadyWorld(page);
   await page.getByRole('button', { name: /Enter as witness/ }).click();
   await expect(page.getByRole('heading', { name: 'Witness the current.' })).toBeHidden();
-  if (pause) await pauseWorld(page);
   return getDiagnostics(page);
 }
 
-export async function pauseWorld(page: Page): Promise<void> {
-  const pauseButton = page.getByRole('button', { name: 'Pause time' });
-  const resumeButton = page.getByRole('button', { name: 'Resume time' });
-  if (await resumeButton.isVisible()) return;
-  await expect(pauseButton).toBeVisible();
-  await pauseButton.click();
-  await expect(resumeButton).toBeVisible();
-}
-
+/**
+ * Cross a real day boundary. Worlds advance only because real time passes, so
+ * this moves the clock the world reads rather than the world itself.
+ */
 export async function advanceOneDay(page: Page): Promise<CurrentDiagnostics> {
   const before = await getDiagnostics(page);
   await page.evaluate(() => {

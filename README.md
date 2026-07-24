@@ -4,7 +4,7 @@ The Current is a local-first, deterministic civilization simulation presented as
 
 This is a working first implementation, not the finished civilization described by the specification. The population loop, persistence, worker isolation, causal inputs, and 3D spectator experience run today. Businesses, laws and ideologies, multiple settlements, road-based navigation, and long-form historical replay remain future work. See [the exact implementation status](docs/STATUS.md).
 
-**One shared world.** In production the application spectates a single server-hosted authoritative world that advances at one world day per real day. Fresh cryptographic entropy is created only when a day is resolved and is then recorded for replay, so no hidden script or saved seed contains the future. Every viewer sees the same world, and nobody can pause, accelerate, or fork it from a spectator client. Append `?world=local` to run a private local world instead (development builds default to local).
+**One shared world.** The application spectates a single server-hosted authoritative world that advances at one world day per real day. This is the default in development and in production alike: `npm run dev` shows the same live world as the deployed site. Fresh cryptographic entropy is created only when a day is resolved and is then recorded for replay, so no hidden script or saved seed contains the future. Every viewer sees the same world, and nobody can pause, accelerate, or fork it from a spectator client. An outsider who wants a private world of their own can append `?world=local` (alias `?world=new`); that fork also runs on the real clock, one world day per real day, with no time controls.
 
 ![The Current's procedural settlement in orbital view](docs/screenshots/orbital-world-final.png)
 
@@ -26,7 +26,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite. The simulation starts paused. It works without live network data after the application files load.
+Open the URL printed by Vite. It shows the live shared world, the same one the deployed site shows — look for the `LIVE — ONE SHARED WORLD` badge. Append `?world=local` for a private world that works without network access after the application files load.
 
 This repository was developed on a Google Drive virtual filesystem, where dependency extraction can corrupt `node_modules`. If installation there fails, use the committed NTFS-cache runner:
 
@@ -59,8 +59,11 @@ Era Zero's accelerated run is archived as historical evidence. Era One uses engi
 - `1`, `2`, `3`: orbital, third-person, and first-person spectator views.
 - History, Influence, Signals, and System panels are available from the world toolbar on desktop and touch layouts.
 - Closing an entity's Details card leaves its spectator camera active; use Details in the camera dock to reopen it.
-- `Space`: pause/resume. `[` / `]`: change speed.
 - `H`: hide/show UI. `Escape`: dismiss the active details or information panel.
+
+Time is not a control. Every world advances one world day per real day from its
+own genesis, so there is no pause, speed, or manual day advance in any mode. The
+top bar reports the world day and its 24-hour time of day.
 
 Camera modes remain observational. Complete desktop and touch controls are in [docs/CONTROLS.md](docs/CONTROLS.md).
 

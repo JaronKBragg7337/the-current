@@ -107,6 +107,10 @@ describe('selected person inspection refresh', () => {
   const inspectPerson = vi.fn();
 
   beforeEach(() => {
+    // Both dev and production default to the shared live world, so a test that
+    // wants a private local world has to ask for one the same way an outsider
+    // would. Nothing about a test environment grants it implicitly.
+    window.history.replaceState({}, '', '?world=local');
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement('div');
     document.body.append(container);
@@ -118,14 +122,10 @@ describe('selected person inspection refresh', () => {
       inspectedPersonId: null,
       hostMetrics: null,
       ready: true,
-      paused: true,
-      speed: 1,
       saveStatus: 'saved',
       error: null,
       usingWorker: true,
-      setSpeed: vi.fn(),
-      togglePause: vi.fn(),
-      advanceDays: vi.fn(),
+      skipAheadOneDayForTests: vi.fn(),
       inspectPerson,
       submitIntervention: vi.fn(),
       submitSignal: vi.fn(),
@@ -184,7 +184,7 @@ describe('selected person inspection refresh', () => {
     expect(container.querySelector('[data-testid="interventions-state"]')?.textContent).toContain('1');
   });
 
-  it('dismisses the welcome overlay without starting the paused simulation', async () => {
+  it('dismisses the welcome overlay without touching world time', async () => {
     await act(async () => root.render(<App />));
 
     await act(async () => {
@@ -192,8 +192,19 @@ describe('selected person inspection refresh', () => {
     });
 
     expect(container.querySelector('[data-testid="enter-world"]')).toBeNull();
-    expect(runtime.setSpeed).not.toHaveBeenCalled();
-    expect(runtime.togglePause).not.toHaveBeenCalled();
+    expect(runtime.skipAheadOneDayForTests).not.toHaveBeenCalled();
+  });
+
+  it('offers no keyboard route to pause or accelerate the world', async () => {
+    await act(async () => root.render(<App />));
+
+    await act(async () => {
+      [' ', '[', ']'].forEach((key) => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+      });
+    });
+
+    expect(runtime.skipAheadOneDayForTests).not.toHaveBeenCalled();
   });
 
   it('rejects oversized imports visibly without reading them and always resets the input', async () => {
